@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- 与 Unity 2021.3 / 2022.3 的 C# 版本保持一致，避免用到编辑器不支持的新语法 -->
+    <LangVersion>9.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Psd2Ugui.CoreTests</RootNamespace>
+    <AssemblyName>Psd2Ugui.CoreTests</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 直接编译 Core 源码：Core 不依赖 UnityEngine，可以脱离 Unity 测试 -->
+    <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

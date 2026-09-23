@@ -18,7 +18,24 @@
 - 文本样式同步（字号、颜色、描边、阴影、渐变）
 - 无 UnityEngine 依赖的 Core 层，可脱离 Unity 直接单元测试
 
+## 开发
+
+```bash
+# 跑完所有能脱离 Unity 的检查（Core 单测 + Unity 兼容性编译 + 命令行工具）
+Tools~/run-tests.sh
+
+# 查看一个 PSD 的解析结果
+dotnet run --project "Tools~/PsdDump" -- path/to/file.psd
+
+# 与 psd-tools 交叉校验图层明细（详见 Tools~/psd-tools-verify/README.md）
+dotnet run --project "Tools~/PsdDump" -- path/to/file.psd --layers /tmp/actual.json
+python3 Tools~/psd-tools-verify/compare.py /tmp/reference.json /tmp/actual.json
+```
+
+`Tools~/` 以 `~` 结尾，Unity 不会编译它；它只放开发期的测试与命令行工具。
+
 ## 文档
+
 
 - [任务清单](docs/TASKS.md)
 - [架构设计](docs/ARCHITECTURE.md)

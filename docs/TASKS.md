@@ -100,18 +100,34 @@ Psd2UGUI/                          # UPM 包
 - [x] `Contract/`：`UiDocument`、`UiNode`、`UiElementType`、`UiRole`、`UiResource`、`UiDiagnostic`、`ContractJsonWriter`
 - [x] 零依赖 JSON 读写器（转义、缩进、确定性字段顺序、回读解析）
 - [x] `Tools~/CoreTests` dotnet 测试工程骨架（直接编译 `Runtime/Core`）
+- [x] `.gitignore` 放行 `Tools~/`（全局 gitignore 的 `*~` 规则会把它整个排除掉，导致工具与测试进不了仓库）
+
 - **验收**：`dotnet test` 通过；契约 JSON 可被解析回模型（往返测试）
 - **提交**：`feat(core): 契约数据模型与 JSON 写出`
 
 ### Step 2 · PSD 容器解析
 
-- [ ] 文件头（`8BPS`/PSD/PSB）、颜色模式段、图像资源段
-- [ ] 图层与蒙版段：图层记录、通道信息、混合模式、不透明度、裁剪标记、flags
-- [ ] 附加图层信息：`luni`（Unicode 名）、`lyid`（图层 ID）、`lsct`（分组）、`lnsr`（纯色填充）、`TySh`（文本）、`lfx2`（图层效果）、矢量蒙版 `vmsk/vsms`
-- [ ] 图像数据解码：Raw / RLE / ZIP / ZIP+Prediction，8bit 与 16bit
-- [ ] 未知块与不支持特性 → 诊断条目
-- **验收**：测试用自造 PSD（含分组、文本层、纯色层、RLE/ZIP）解析结果与预期一致；真实 PSD 不抛异常
+- [x] 文件头（`8BPS`/PSD/PSB）、颜色模式段、图像资源段
+- [x] 图层与蒙版段：图层记录、通道信息、混合模式、不透明度、裁剪标记、flags
+- [x] 附加图层信息：`luni`（Unicode 名）、`lyid`（图层 ID）、`lsct`（分组）、`SoCo`（纯色填充）、`TySh`（文本）、`lfx2`（图层效果）、矢量蒙版 `vmsk/vsms`
+- [x] 图像数据解码：Raw / RLE / ZIP / ZIP+Prediction，8 / 16 / 32 位
+- [x] 未知块与不支持特性 → 诊断条目
+- [x] `Tools~/PsdDump` 命令行查看器（`--layers` 输出图层明细 JSON）
+- [x] `Tools~/psd-tools-verify` 交叉校验工具链（与 psd-tools 逐字段对照）
+- **验收**：`dotnet test` 80 项全绿；真实 PSD 两个样本共 104 个图层节点与 psd-tools 逐字段一致（矩形、不透明度、可见性、裁剪、分组类型、文本内容/字体/字号/颜色/对齐、效果种类、纯色填充颜色），解析期间零警告、零异常
 - **提交**：`feat(core): 自研 PSD 二进制解析器`
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 文本层字号恒为 0、颜色恒为白 | 样式字段在 `StyleSheet` → `StyleSheetData` 两层里，段落对齐同理在 `Properties` 里；颜色是 `<< /Type 1 /Values [A R G B] >>` 而不是数组 | 按真实层级取值，颜色按 ARGB 解析并加数组回退 |
+| 字体名取不到 | `FontSet` 挂在 `ResourceDict` 下，与 `EngineDict` 平级而非其子节点 | 先取平级 `ResourceDict`，再回退 `EngineDict` 里的同名节点 |
+| 文档级附加信息块报签名异常 | Photoshop 会在每块之后补 0~3 字节对齐到 4 字节，补位不计入长度字段 | 按块起点做 4 字节对齐后再读下一块 |
+| 图层全部被判为隐藏 | flags 的第 2 位（0x02）置位表示“隐藏”，与规范字面描述相反 | `Visible = (flags & 0x02) == 0` |
+| 部分图层效果多出一堆没开的效果 | `lfx2` 里存在 `present=true` 但 `enab=false` 的残留样式，只按 `present` 过滤会误导出 | 以 `enab` 为准，两个标志都为真才生效 |
+| 图层数比实际多时报错中断 | 追加数据长度异常时图层记录会读到段外 | 单条记录解析失败降级为警告并停止读取剩余图层 |
+| 分组层级多出 13 个空节点 | `lsct=3` 的收尾标记只是“开括号”，不是图层 | 收尾标记不生成节点，仅用于还原层级 |
 
 ### Step 3 · 图层树与位图合成
 
@@ -227,7 +243,8 @@ Psd2UGUI/                          # UPM 包
 | --- | --- | --- |
 | Step 0 | `chore: 初始化 PSD2UGUI 仓库与任务清单` | ✅ |
 | Step 1 | `feat(core): 契约数据模型与 JSON 写出` | ✅ |
-| Step 2 | `feat(core): 自研 PSD 二进制解析器` | ⬜ |
+| Step 2 | `feat(core): 自研 PSD 二进制解析器` | ✅ |
+
 | Step 3 | `feat(core): 图层树构建与位图合成` | ⬜ |
 | Step 4 | `feat(core): 图层语义标签与控件类型推断` | ⬜ |
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ⬜ |

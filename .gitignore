@@ -1,3 +1,9 @@
+# Tools~ 是 Unity 的约定：Unity 会忽略以 ~ 结尾的目录，开发工具放这里不会被编译。
+# 但全局 gitignore 里通常有 *~ 规则，会在仓库层面把整个目录排除掉，
+# 所以这条放行必须写在最前面——后面的 bin/obj 等规则才能正常排除构建产物。
+!Tools~/
+!Tools~/**
+
 # Unity
 [Ll]ibrary/
 [Tt]emp/
@@ -8,8 +14,6 @@
 [Uu]serSettings/
 [Mm]emoryCaptures/
 *.csproj
-# 例外：dotnet 测试工程需要提交
-!Tools~/CoreTests/*.csproj
 *.unityproj
 *.sln
 *.suo
@@ -30,8 +34,9 @@ sysinfo.txt
 # 开发用宿主工程（由 Tools~/dev-project.sh 生成，不提交）
 DevProject/
 
-# dotnet
+# dotnet 构建产物
 bin/
+obj/
 TestResults/
 *.trx
 
@@ -43,3 +48,6 @@ TestResults/
 Temp/
 Output/
 *.log
+
+# 例外：Tools~ 下的 dotnet 工程需要提交（必须写在 *.csproj 之后才能生效）
+!Tools~/**/*.csproj
