@@ -295,16 +295,20 @@ namespace Psd2Ugui.Core.Semantics
             }
 
             // 类型：覆盖表 > 标签 > 自定义推断器 > 启发式
+            // 顺手记下来源（tag / override / inferred），预检要靠它提示「这个控件类型是猜的」
             UiElementType type = UiElementType.None;
+            string typeSource = null;
             if (entry != null && entry.HasType)
             {
                 type = entry.Type;
+                typeSource = "override";
                 state.Overridden++;
             }
 
             else if (tag.Type != UiElementType.None)
             {
                 type = tag.Type;
+                typeSource = "tag";
                 state.Tagged++;
             }
             else if (options.InferTypes)
@@ -334,11 +338,17 @@ namespace Psd2Ugui.Core.Semantics
 
                 if (type != UiElementType.None)
                 {
+                    typeSource = "inferred";
                     state.Inferred++;
                 }
             }
 
             node.Type = type;
+            if (typeSource != null)
+            {
+                node.Tags["type-source"] = typeSource;
+            }
+
             if (node.Type == UiElementType.Ignore || tag.Role == UiRole.Ignore)
             {
                 state.Ignored++;

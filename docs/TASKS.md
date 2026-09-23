@@ -52,7 +52,7 @@ Psd2UGUI/                          # UPM 包
 │  ├─ Psd/                         # PSD 二进制解析器（PSD/PSB、RLE/ZIP）
 │  ├─ Imaging/                     # 位图、裁剪/去空、PNG 编码、九宫检测
 │  ├─ Semantics/                   # 标签解析、类型推断、角色分配、覆盖表、节点树构建
-│  ├─ Pipeline/                    # 编排、选项、预检
+│  ├─ Pipeline/                    # 编排、选项、预检、体检报告、共享资源表
 │  └─ Build/                       # 预制体装配计划（控件映射、布局换算，可 dotnet 测试）
 ├─ Editor/                         # Unity Editor 侧
 │  ├─ Import/                      # 读取 PSD、Sprite 落盘、导入设置、资源复用
@@ -344,10 +344,59 @@ Assets/PSD2UGUI/
 
 ### Step 9 · 预检与诊断报告
 
-- [ ] 预检项：空画布、重名资源、缺失字体、超尺寸图、无类型标签的疑似控件、九宫歧义、被忽略的整棵子树
-- [ ] 报告模型与落盘（记录解析耗时、节点数、导出资源数、诊断明细）
+- [x] 预检项：空画布、重名资源、缺失字体、超尺寸图、无类型标签的疑似控件、九宫歧义、被忽略的整棵子树
+- [x] 报告模型与落盘（记录解析耗时、节点数、导出资源数、诊断明细）
 - **验收**：构造的问题 PSD 能产出预期诊断；正常 PSD 无 Error 级诊断
+- **验收结果**：`dotnet test` 343 项全绿（本步 +22）；真实样本预检出 0 Error / 2 Warning / 14 Info，
+  报告落盘 `/tmp/psd9_report.json`（见下）
 - **提交**：`feat(editor): 预检与诊断报告`
+
+**这一版怎么做的**
+
+| 部件 | 位置 | 职责 |
+| --- | --- | --- |
+| `Preflight` | `Runtime/Core/Pipeline` | 七项检查，只产出 `preflight.*` 诊断，不改任何数据 |
+| `PreflightOptions` | 同上 | 已知字体表、贴图上限、是否提示「猜出来的控件类型」 |
+| `NodeBuilder` 的类型来源标记 | `Runtime/Core/Semantics` | 每个节点记 `Tags["type-source"] = tag / override / inferred`，预检靠它区分「标签钉死的」与「按名字猜的」 |
+| `ImportReport` | `Runtime/Core/Pipeline` | 体检报告：来源与体积、解析/计划耗时、节点/资源/引用计数、诊断明细、语义层统计；`ToJsonText` 直接落盘 |
+| `EditorPreflight` | `Editor/Import` | 编辑器侧入口：把 AssetDatabase 里的字体名与工程贴图上限喂给 Core 的检查 |
+
+预检项与判据：
+
+| 诊断码 | 级别 | 触发条件 |
+| --- | --- | --- |
+| `preflight.empty-canvas` | Error | 画布宽或高 ≤ 0，生成出来必然不可用 |
+| `preflight.empty-document` | Warning | 画布里一个图层都没有 |
+| `preflight.duplicate-sprite-name` | Warning | 多个**内容不同**的图层同名，`ref <名字>` 会取到意外的那张 |
+| `preflight.oversized-sprite` | Warning | 贴图边长超过工程 Max Size（会静默缩小） |
+| `preflight.font-missing` | Warning | 文字图层用的字体不在工程里（会退回默认字体） |
+| `preflight.font-unknown` | Info | 设计稿里没写字体信息 |
+| `preflight.slice-degenerate` | Warning | 九宫边框把中间可拉伸区切没了 |
+| `preflight.ignored-subtree` | Warning | 被 `ignore` 的图层还带着子图层（会一起消失） |
+| `preflight.inferred-control` | Info | 按钮/开关/滑条这类**有行为**的控件类型是按名字猜的，没有标签钉死 |
+
+**验收结果**
+
+- `dotnet test Tools~/CoreTests` **343 项全绿**（Step 8 是 321，本步 +22，全部落在 `PreflightTests`）：
+  正常文档零诊断、空画布报错、空文档提示、重名资源（含「内容相同不算重名」）、
+  九宫退化三态（4x4 切 2 / 5x5 切 2 / 6x6 切 2）、超尺寸与不超尺寸、字体缺失/命中/未填写/不传字体表、
+  忽略子树（有子节点才提示）、猜出来的控件类型（标签指定与图片类型都不提示）、
+  语义层类型来源标记、报告计数与 JSON 往返。
+- Editor 脚本编译 0 错误 0 警告（新增 `EditorPreflight`）。
+- 真实样本 `Psd2UguiForm.psd`：
+  `PsdDump Psd2UguiForm.psd --module common --preflight --report /tmp/psd9_report.json`
+  → 0 Error / 2 Warning / 14 Info，警告是「Mark、ToggleBg 两个图层重名」与 2 条
+  「ButtonBlack、ButtonBule 的 tmp-button 类型是按名字猜的」；报告里 `nodes=52 sprites=12
+  slicedSprites=6 sharedSprites=3 referencesLocal=4`、`parseMs≈20 planMs≈13`。
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 九宫预检在真实样本上刷出 6 条假警报 | 判据写成「边框加起来超过边长一半」，但「中间只剩 1 像素」恰恰是描边块最常见也最正确的写法 | 只在中间区**完全消失**（`左+右 ≥ 宽`）时才报，真实样本的假警报归零 |
+| 忽略子树的提示数字多算一个 | `CountDescendants()` 把自己也算进去 | 减一，并把这条规则写进注释 |
+| 同一批诊断被写了两遍 | `--export-dir` 与 `--prefab-plan` 各自跑了一次导出计划 | PsdDump 改成共享一份 `ExportPlan`（顺带让报告里的统计与诊断是同一份） |
+| 想提示「这个控件类型是猜的」却查不出来 | 语义层只记总计数（`Stats["inferred"]`），没在节点上留来源 | 每个节点记 `Tags["type-source"]`，标签/覆盖表/推断三条路径分别落值 |
 
 ### Step 10 · 编辑器工作流
 
@@ -408,7 +457,7 @@ Assets/PSD2UGUI/
 | Step 6 | `feat(editor): Sprite 导出与导入设置` | ✅ |
 | Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ✅ |
 | Step 8 | `feat(editor): 增量更新与资源复用` | ✅ |
-| Step 9 | `feat(editor): 预检与诊断报告` | ⬜ |
+| Step 9 | `feat(editor): 预检与诊断报告` | ✅ |
 | Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ⬜ |
 | Step 11 | `test: EditMode 测试与无头验证脚本` | ⬜ |
 | Step 12 | `docs: 完善使用与架构文档，发布 0.1.0` | ⬜ |

@@ -28,7 +28,7 @@ namespace Psd2Ugui.Tools
                 Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
                 Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
                 Console.WriteLine("      [--export-dir dir] [--module name] [--no-nine-slice] [--prefab-plan out.json]");
-                Console.WriteLine("      [--shared-dir manifest目录]");
+                Console.WriteLine("      [--shared-dir manifest目录] [--preflight] [--report out.json]");
                 return 2;
             }
 
@@ -42,9 +42,10 @@ namespace Psd2Ugui.Tools
             string exportDir = null;
             string prefabPlanPath = null;
             string sharedDir = null;
+            string reportPath = null;
+            bool preflight = false;
             ExportOptions exportOptions = new ExportOptions();
             string module = null;
-            bool noNineSlice = false;
             bool showNodes = false;
             for (int i = 1; i < args.Length; i++)
             {
@@ -87,7 +88,6 @@ namespace Psd2Ugui.Tools
                 }
                 else if (args[i] == "--no-nine-slice")
                 {
-                    noNineSlice = true;
                     exportOptions.DetectNineSlice = false;
                 }
                 else if (args[i] == "--prefab-plan")
@@ -97,6 +97,14 @@ namespace Psd2Ugui.Tools
                 else if (args[i] == "--shared-dir")
                 {
                     sharedDir = Next(args, ref i);
+                }
+                else if (args[i] == "--report")
+                {
+                    reportPath = Next(args, ref i);
+                }
+                else if (args[i] == "--preflight")
+                {
+                    preflight = true;
                 }
             }
 
@@ -153,6 +161,21 @@ namespace Psd2Ugui.Tools
             UiDocument document = NodeBuilder.Build(file, buildOptions);
             PrintSemantics(document, showNodes);
 
+            // 导出计划只跑一次：重复跑会把同一批诊断写好几遍
+            ExportPlan exportPlan = null;
+            System.Diagnostics.Stopwatch planWatch = null;
+            ExportPlan Plan()
+            {
+                if (exportPlan == null)
+                {
+                    planWatch = System.Diagnostics.Stopwatch.StartNew();
+                    exportPlan = ExportPlanner.Build(file, document, exportOptions);
+                    planWatch.Stop();
+                }
+
+                return exportPlan;
+            }
+
             if (!string.IsNullOrEmpty(jsonPath))
             {
                 File.WriteAllText(jsonPath, ContractJson.ToJsonText(document), new UTF8Encoding(false));
@@ -182,13 +205,40 @@ namespace Psd2Ugui.Tools
             if (!string.IsNullOrEmpty(exportDir))
             {
                 Console.WriteLine();
-                Console.WriteLine(Export(file, document, exportDir, module, !noNineSlice, exportOptions.Shared));
+                Console.WriteLine(Export(document, exportDir, exportOptions, Plan()));
+            }
+
+            if (preflight)
+            {
+                Console.WriteLine();
+                var preflightOptions = new PreflightOptions();
+                int added = Preflight.Run(document, Plan(), preflightOptions);
+                Console.WriteLine("预检      : 新增 " + added + " 条诊断（E" +
+                                  document.CountSeverity(DiagnosticSeverity.Error) + "/W" +
+                                  document.CountSeverity(DiagnosticSeverity.Warning) + "/I" +
+                                  document.CountSeverity(DiagnosticSeverity.Info) + "）");
+                for (int i = 0; i < document.Diagnostics.Count; i++)
+                {
+                    UiDiagnostic item = document.Diagnostics[i];
+                    if (item.Code.StartsWith("preflight.", StringComparison.Ordinal))
+                    {
+                        Console.WriteLine("  [" + item.Severity.ToContract() + "] " + item.Code + ": " +
+                                          item.Message);
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(reportPath))
+            {
+                Console.WriteLine();
+                Console.WriteLine(DumpReport(document, Plan(), path, reportPath,
+                    stopwatch.Elapsed.TotalMilliseconds, planWatch));
             }
 
             if (!string.IsNullOrEmpty(prefabPlanPath))
             {
                 Console.WriteLine();
-                Console.WriteLine(DumpPrefabPlan(file, document, prefabPlanPath, exportOptions));
+                Console.WriteLine(DumpPrefabPlan(document, prefabPlanPath, Plan()));
             }
 
             if (!string.IsNullOrEmpty(compositePath))
@@ -392,10 +442,14 @@ namespace Psd2Ugui.Tools
         /// 走一遍预制体装配计划（不碰 Unity）：把「每个节点变成什么控件、连了哪些子件」写出来，
         /// 便于在没有 Unity 的环境里核对映射规则。
         /// </summary>
-        private static string DumpPrefabPlan(PsdFile file, UiDocument document, string outPath, ExportOptions options)
+        private static string DumpPrefabPlan(UiDocument document, string outPath, ExportPlan exportPlan)
         {
-            // 装配计划依赖导出计划给出的「节点 → 贴图」绑定，先跑一遍
-            ExportPlanner.Build(file, document, options == null ? null : options);
+            // 装配计划依赖导出计划给出的「节点 → 贴图」绑定
+            if (exportPlan == null)
+            {
+                return "预制体计划: 缺少导出计划";
+            }
+
             PlanNode plan = PrefabPlanner.Build(document);
             if (plan == null)
             {
@@ -511,16 +565,9 @@ namespace Psd2Ugui.Tools
         /// 按真实导出计划落盘：`sprite/&lt;模块&gt;/xxx.png` + `contract/&lt;模块&gt;/&lt;源文件&gt;.json`。
         /// 这是 Unity 侧 SpriteExporter 的无 Unity 版本，用来在命令行端到端验证「解析 → 计划 → PNG」。
         /// </summary>
-        private static string Export(PsdFile file, UiDocument document, string directory, string module,
-            bool nineSlice, SharedSpriteTable shared = null)
+        private static string Export(UiDocument document, string directory, ExportOptions options,
+            ExportPlan plan)
         {
-            var options = new ExportOptions { DetectNineSlice = nineSlice, Shared = shared };
-            if (!string.IsNullOrEmpty(module))
-            {
-                options.Module = module;
-            }
-
-            ExportPlan plan = ExportPlanner.Build(file, document, options);
             string spriteDir = Path.Combine(directory, "sprite", plan.Module);
             Directory.CreateDirectory(spriteDir);
 
@@ -537,16 +584,17 @@ namespace Psd2Ugui.Tools
 
             string contractDir = Path.Combine(directory, "contract", plan.Module);
             Directory.CreateDirectory(contractDir);
-            string contractFile = Path.Combine(contractDir, Path.GetFileNameWithoutExtension(file.FileName) + ".json");
+            string sourceName = document.Document.FileName;
+            string contractFile = Path.Combine(contractDir, Path.GetFileNameWithoutExtension(sourceName) + ".json");
             File.WriteAllText(contractFile, ContractJson.ToJsonText(document), new UTF8Encoding(false));
 
             // 和 Unity 侧一样写一份身份映射：另一个 PSD 用 --shared-dir 指到这里就能复用这些图
             var manifest = new Psd2UguiManifest();
-            manifest.Update(plan, file.FileName);
+            manifest.Update(plan, sourceName);
             string manifestDir = Path.Combine(directory, "manifest", plan.Module);
             Directory.CreateDirectory(manifestDir);
             manifest.Save(Path.Combine(manifestDir,
-                StableId.Sanitize(Path.GetFileNameWithoutExtension(file.FileName)) + Psd2UguiManifest.FileName));
+                StableId.Sanitize(Path.GetFileNameWithoutExtension(sourceName)) + Psd2UguiManifest.FileName));
 
             return "已导出资源: " + plan.Sprites.Count + " 张（可切 " + plan.SliceableCount + "）-> " + spriteDir +
                    "\n  共 " + bytes + " 字节；契约: " + contractFile +
@@ -612,6 +660,20 @@ namespace Psd2Ugui.Tools
 
             File.WriteAllText(Path.Combine(directory, "index.json"), index.ToJsonString(true), new UTF8Encoding(false));
             return written;
+        }
+
+        /// <summary>
+        /// 写一份导入体检报告（耗时 / 产出 / 诊断明细），供 CI 与编辑器窗口用。
+        /// </summary>
+        private static string DumpReport(UiDocument document, ExportPlan plan, string sourcePath,
+            string outPath, double parseMilliseconds, System.Diagnostics.Stopwatch planWatch)
+        {
+            ImportReport report = ImportReport.From(document, plan);
+            report.SourceBytes = new FileInfo(sourcePath).Length;
+            report.ParseMilliseconds = parseMilliseconds;
+            report.PlanMilliseconds = planWatch == null ? 0d : planWatch.Elapsed.TotalMilliseconds;
+            File.WriteAllText(outPath, report.ToJsonText(true), new UTF8Encoding(false));
+            return "体检报告  : " + report.BuildSummary() + " -> " + outPath;
         }
 
         /// <summary>
