@@ -97,9 +97,9 @@ Psd2UGUI/                          # UPM 包
 
 ### Step 1 · Core 契约与数据模型
 
-- [ ] `Contract/`：`UiDocument`、`UiNode`、`UiElementType`、`UiRole`、`UiResource`、`UiDiagnostic`、`ContractJsonWriter`
-- [ ] 零依赖 JSON 写出器（转义、缩进、确定性字段顺序）
-- [ ] `Tools~/CoreTests` dotnet 测试工程骨架（直接编译 `Runtime/Core`）
+- [x] `Contract/`：`UiDocument`、`UiNode`、`UiElementType`、`UiRole`、`UiResource`、`UiDiagnostic`、`ContractJsonWriter`
+- [x] 零依赖 JSON 读写器（转义、缩进、确定性字段顺序、回读解析）
+- [x] `Tools~/CoreTests` dotnet 测试工程骨架（直接编译 `Runtime/Core`）
 - **验收**：`dotnet test` 通过；契约 JSON 可被解析回模型（往返测试）
 - **提交**：`feat(core): 契约数据模型与 JSON 写出`
 
@@ -226,7 +226,7 @@ Psd2UGUI/                          # UPM 包
 | 步骤 | 提交信息 | 状态 |
 | --- | --- | --- |
 | Step 0 | `chore: 初始化 PSD2UGUI 仓库与任务清单` | ✅ |
-| Step 1 | `feat(core): 契约数据模型与 JSON 写出` | ⬜ |
+| Step 1 | `feat(core): 契约数据模型与 JSON 写出` | ✅ |
 | Step 2 | `feat(core): 自研 PSD 二进制解析器` | ⬜ |
 | Step 3 | `feat(core): 图层树构建与位图合成` | ⬜ |
 | Step 4 | `feat(core): 图层语义标签与控件类型推断` | ⬜ |

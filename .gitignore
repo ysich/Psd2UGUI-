@@ -8,6 +8,8 @@
 [Uu]serSettings/
 [Mm]emoryCaptures/
 *.csproj
+# 例外：dotnet 测试工程需要提交
+!Tools~/CoreTests/*.csproj
 *.unityproj
 *.sln
 *.suo
