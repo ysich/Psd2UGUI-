@@ -13,6 +13,7 @@ namespace Psd2Ugui.Editor.Import
     /// </summary>
     public sealed class Psd2UguiManifest
     {
+        /// <summary>身份映射文件的扩展名（文件全名是 `&lt;源文件&gt;.psd2ugui.json`）。</summary>
         public const string FileName = ".psd2ugui.json";
         public const string CurrentVersion = "1.0.0";
 
@@ -60,6 +61,12 @@ namespace Psd2Ugui.Editor.Import
                 keep.Add(plan.Sprites[i].ResourceId);
             }
 
+            // 复用来的共享贴图也在用，不能算失效
+            for (int i = 0; i < plan.Reused.Count; i++)
+            {
+                keep.Add(plan.Reused[i].Id);
+            }
+
             var ids = new List<string>(Resources.Keys);
             ids.Sort(System.StringComparer.Ordinal);
             for (int i = 0; i < ids.Count; i++)
@@ -85,6 +92,13 @@ namespace Psd2Ugui.Editor.Import
 
             return entry.ContentHash == sprite.ContentHash && entry.File == sprite.FileName &&
                    entry.BorderKey == BorderKeyOf(sprite.Border);
+        }
+
+        /// <summary>判断一个路径是不是身份映射文件。</summary>
+        public static bool IsManifestPath(string path)
+        {
+            return !string.IsNullOrEmpty(path) &&
+                   path.EndsWith(FileName, System.StringComparison.Ordinal);
         }
 
         public static string BorderKeyOf(UiBorder border)
@@ -174,6 +188,25 @@ namespace Psd2Ugui.Editor.Import
             Module = plan.Module;
             SourceFileName = sourceFileName;
             Resources.Clear();
+
+            // 复用的共享贴图也要记一笔：别的界面重新导出、清理失效图时，
+            // 要靠这份记录知道「这张图还有人用」，否则会连别人的图一起删掉。
+            for (int i = 0; i < plan.Reused.Count; i++)
+            {
+                UiResource resource = plan.Reused[i];
+                Resources[resource.Id] = new ManifestEntry
+                {
+                    Id = resource.Id,
+                    Name = resource.Name,
+                    File = resource.FileName,
+                    ContentHash = resource.ContentHash,
+                    Width = resource.Width,
+                    Height = resource.Height,
+                    Border = resource.Border,
+                    Shared = true
+                };
+            }
+
             for (int i = 0; i < plan.Sprites.Count; i++)
             {
                 SpriteExport sprite = plan.Sprites[i];

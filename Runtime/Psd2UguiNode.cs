@@ -29,6 +29,13 @@ namespace Psd2Ugui
         /// <summary>角色标签（bg / fill / handle / …）。</summary>
         public string Role;
 
+        /// <summary>
+        /// 生成时记下的「受管属性指纹」。
+        /// 重新导出时拿它和新的计划比对：一样就完全不动这个节点，
+        /// 人手调过的位置、颜色、字体因此都能留住。
+        /// </summary>
+        public string SpecHash;
+
         /// <summary>生成器标识，方便将来识别旧版本产物。</summary>
         public string Generator = "psd2ugui";
 

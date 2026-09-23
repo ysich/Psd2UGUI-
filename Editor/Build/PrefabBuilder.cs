@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Psd2Ugui.Core.Build;
 using Psd2Ugui.Core.Contract;
+using Psd2Ugui.Editor.Import;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -30,6 +31,9 @@ namespace Psd2Ugui.Editor.Build
     ///
     /// 这里只做「照着计划建对象、挂组件、连线」这类机械动作，
     /// 控件映射与布局换算都在 Core 的 <see cref="PrefabPlanner"/> 里，可脱离 Unity 测试。
+    ///
+    /// 对象索引按「层级键」组织（稳定 ID，模板节点用 `#名字`），
+    /// 增量更新时用的是同一套键，因此建与改走的是同一段代码。
     /// </summary>
     public static class PrefabBuilder
     {
@@ -43,8 +47,8 @@ namespace Psd2Ugui.Editor.Build
                 return result;
             }
 
-            var index = new Dictionary<PlanNode, GameObject>();
-            GameObject root = CreateNode(plan, null, context, index, true);
+            var index = new Dictionary<string, GameObject>();
+            GameObject root = CreateNode(plan, null, context, index, null, true);
             result.Root = root;
             result.Nodes = context.NodesCreated;
             return result;
@@ -63,12 +67,7 @@ namespace Psd2Ugui.Editor.Build
             try
             {
                 result.PrefabPath = prefabPath;
-                string folder = Path.GetDirectoryName(prefabPath);
-                if (!string.IsNullOrEmpty(folder))
-                {
-                    Import.Psd2UguiPaths.EnsureAssetFolder(folder.Replace('\\', '/'));
-                }
-
+                EnsureFolder(prefabPath);
                 result.Prefab = PrefabUtility.SaveAsPrefabAsset(result.Root, prefabPath);
                 if (result.Prefab == null)
                 {
@@ -86,8 +85,27 @@ namespace Psd2Ugui.Editor.Build
             return result;
         }
 
+        public static void EnsureFolder(string assetFilePath)
+        {
+            string folder = Path.GetDirectoryName(assetFilePath);
+            if (!string.IsNullOrEmpty(folder))
+            {
+                Psd2UguiPaths.EnsureAssetFolder(folder.Replace('\\', '/'));
+            }
+        }
+
+        /// <summary>
+        /// 建一个节点及其子树，并登记层级键。
+        /// 新建与「增量更新里新增的节点」共用这一条路径。
+        /// </summary>
+        public static GameObject CreateSubtree(PlanNode plan, Transform parent, PrefabBuildContext context,
+            Dictionary<string, GameObject> index, string parentKey, bool isRoot = false)
+        {
+            return CreateNode(plan, parent, context, index, parentKey, isRoot);
+        }
+
         private static GameObject CreateNode(PlanNode plan, Transform parent, PrefabBuildContext context,
-            Dictionary<PlanNode, GameObject> index, bool isRoot)
+            Dictionary<string, GameObject> index, string parentKey, bool isRoot)
         {
             var go = new GameObject(plan.Name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
@@ -103,15 +121,29 @@ namespace Psd2Ugui.Editor.Build
             }
 
             ControlFactory.ApplyVisual(plan, go, context);
-            index[plan] = go;
             context.NodesCreated++;
+
+            string key = PlanKeys.Join(parentKey, PlanKeys.Key(plan));
+            index[key] = go;
+
+            if (!string.IsNullOrEmpty(plan.PrefabTarget))
+            {
+                AttachNestedPrefab(plan, go, context);
+                AttachMarker(plan, go, context);
+                if (!plan.Active)
+                {
+                    go.SetActive(false);
+                }
+
+                return go;
+            }
 
             for (int i = 0; i < plan.Children.Count; i++)
             {
-                CreateNode(plan.Children[i], go.transform, context, index, false);
+                CreateNode(plan.Children[i], go.transform, context, index, key, false);
             }
 
-            Wire(plan, go, index, context);
+            Wire(plan, go, index, key, context);
             AttachMarker(plan, go, context);
 
             if (!plan.Active)
@@ -120,6 +152,51 @@ namespace Psd2Ugui.Editor.Build
             }
 
             return go;
+        }
+
+        /// <summary>
+        /// 把已经建好的节点按计划刷新一遍（增量更新用）。
+        /// 只写工具管的属性：名字、布局、外观、子件连线、标记指纹。
+        /// </summary>
+        public static void ApplyManaged(PlanNode plan, GameObject go, PrefabBuildContext context,
+            Dictionary<string, GameObject> index, string key, bool isRoot = false)
+        {
+            if (plan == null || go == null)
+            {
+                return;
+            }
+
+            go.name = plan.Name;
+            var rect = go.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                if (isRoot)
+                {
+                    ApplyRootLayout(rect, plan, context);
+                }
+                else
+                {
+                    ControlFactory.ApplyLayout(rect, plan);
+                }
+            }
+
+            RemoveStaleComponents(plan, go, context);
+            ControlFactory.ApplyVisual(plan, go, context);
+
+            if (!string.IsNullOrEmpty(plan.PrefabTarget))
+            {
+                // 子预制体节点：里面是别人的东西，挂着就别动
+                AttachNestedPrefab(plan, go, context);
+                AttachMarker(plan, go, context);
+                go.SetActive(plan.Active);
+                context.NodesReused++;
+                return;
+            }
+
+            Wire(plan, go, index, key, context);
+            AttachMarker(plan, go, context);
+            go.SetActive(plan.Active);
+            context.NodesReused++;
         }
 
         private static void ApplyRootLayout(RectTransform rect, PlanNode plan, PrefabBuildContext context)
@@ -134,10 +211,20 @@ namespace Psd2Ugui.Editor.Build
                 return;
             }
 
-            var canvas = rect.gameObject.AddComponent<Canvas>();
+            var canvas = rect.gameObject.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                canvas = rect.gameObject.AddComponent<Canvas>();
+            }
+
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
-            var scaler = rect.gameObject.AddComponent<CanvasScaler>();
+            var scaler = rect.gameObject.GetComponent<CanvasScaler>();
+            if (scaler == null)
+            {
+                scaler = rect.gameObject.AddComponent<CanvasScaler>();
+            }
+
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(
                 context.Build.ReferenceWidth > 0 ? context.Build.ReferenceWidth : (float)plan.Rect.Width,
@@ -145,7 +232,56 @@ namespace Psd2Ugui.Editor.Build
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
 
-            rect.gameObject.AddComponent<GraphicRaycaster>();
+            if (rect.gameObject.GetComponent<GraphicRaycaster>() == null)
+            {
+                rect.gameObject.AddComponent<GraphicRaycaster>();
+            }
+        }
+
+        /// <summary>`refp` 节点：挂一个子预制体实例，里面不动。</summary>
+        private static void AttachNestedPrefab(PlanNode plan, GameObject go, PrefabBuildContext context)
+        {
+            string path = Psd2UguiPaths.PrefabPath(context.Export, plan.PrefabTarget);
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (asset == null)
+            {
+                context.Report(DiagnosticSeverity.Warning, "prefab.nested-missing",
+                    "找不到被引用的子预制体，先留一个空节点占位：" + plan.PrefabTarget + "（" + path + "）");
+                return;
+            }
+
+            GameObject instance = FindNestedInstance(go, asset, plan.PrefabTarget);
+            if (instance == null)
+            {
+                instance = (GameObject)PrefabUtility.InstantiatePrefab(asset, go.transform);
+                instance.name = plan.PrefabTarget;
+            }
+
+            var rect = instance.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                ControlFactory.ApplyLayout(rect, plan);
+            }
+        }
+
+        /// <summary>已经挂着同一个子预制体的实例就复用，别每次重新导出都多挂一个。</summary>
+        private static GameObject FindNestedInstance(GameObject go, GameObject asset, string name)
+        {
+            for (int i = 0; i < go.transform.childCount; i++)
+            {
+                GameObject child = go.transform.GetChild(i).gameObject;
+                if (PrefabUtility.GetCorrespondingObjectFromSource(child) == asset)
+                {
+                    return child;
+                }
+
+                if (child.name == name && PrefabUtility.IsAnyPrefabInstanceRoot(child))
+                {
+                    return child;
+                }
+            }
+
+            return null;
         }
 
         private static void AttachMarker(PlanNode plan, GameObject go, PrefabBuildContext context)
@@ -155,49 +291,138 @@ namespace Psd2Ugui.Editor.Build
                 return;
             }
 
-            var marker = go.AddComponent<Psd2UguiNode>();
+            var marker = go.GetComponent<Psd2UguiNode>();
+            if (marker == null)
+            {
+                marker = go.AddComponent<Psd2UguiNode>();
+            }
+
             marker.NodeId = plan.SourceNodeId;
             marker.LayerPath = plan.SourceLayerPath;
             marker.LayerId = plan.SourceLayerId;
             marker.Role = plan.Role;
             marker.SourcePsd = context.SourcePsd;
+            // 记下这次写了什么，下次导出据此判断「设计稿到底变没变」
+            marker.SpecHash = plan.SpecHash;
         }
 
-        private static void Wire(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
+        /// <summary>
+        /// 把不再属于这个节点的控件摘掉（例如类型从按钮改成了图片）。
+        /// 只处理工具会生成的组件，人手加的组件一律保留。
+        /// </summary>
+        private static void RemoveStaleComponents(PlanNode plan, GameObject go, PrefabBuildContext context)
+        {
+            // 视觉件换类型了（文字变图片之类），旧的那个必须摘掉，否则两层会叠在一起
+            ControlKind visual = ControlFactory.VisualKind(plan);
+            if (visual == ControlKind.TmpText && !TmpBackend.Available)
+            {
+                // 没装 TMP，实际生成的是 uGUI Text
+                visual = ControlKind.Text;
+            }
+
+            if (visual != ControlKind.Image && go.GetComponent<Image>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Image>(), true);
+            }
+
+            if (visual != ControlKind.RawImage && go.GetComponent<RawImage>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<RawImage>(), true);
+            }
+
+            if (visual != ControlKind.Text && go.GetComponent<Text>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Text>(), true);
+            }
+
+            if (visual != ControlKind.TmpText && TmpBackend.Available && TmpBackend.Current.RemoveText(go))
+            {
+                context.Report(DiagnosticSeverity.Info, "prefab.tmp-removed",
+                    "节点不再是 TMP 文本，已摘掉旧的 TextMeshProUGUI：" + plan.Name);
+            }
+
+            if (plan.Kind != ControlKind.Mask && go.GetComponent<Mask>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Mask>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Button && go.GetComponent<Button>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Button>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Toggle && go.GetComponent<Toggle>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Toggle>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Slider && go.GetComponent<Slider>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Slider>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Scrollbar && go.GetComponent<Scrollbar>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Scrollbar>(), true);
+            }
+
+            if (plan.Kind != ControlKind.ScrollView && plan.Kind != ControlKind.Dropdown &&
+                go.GetComponent<ScrollRect>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<ScrollRect>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Dropdown && go.GetComponent<Dropdown>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<Dropdown>(), true);
+            }
+
+            if (plan.Kind != ControlKind.InputField && go.GetComponent<InputField>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<InputField>(), true);
+            }
+        }
+
+        private static void Wire(PlanNode plan, GameObject go, Dictionary<string, GameObject> index, string key,
             PrefabBuildContext context)
         {
             switch (plan.Kind)
             {
                 case ControlKind.Button:
-                    WireButton(plan, go, index, context);
+                    WireButton(plan, go, index, key, context);
                     break;
                 case ControlKind.Toggle:
-                    WireToggle(plan, go, index);
+                    WireToggle(plan, go, index, key);
                     break;
                 case ControlKind.Slider:
-                    WireSlider(plan, go, index, context);
+                    WireSlider(plan, go, index, key, context);
                     break;
                 case ControlKind.Scrollbar:
-                    WireScrollbar(plan, go, index, context);
+                    WireScrollbar(plan, go, index, key, context);
                     break;
                 case ControlKind.ScrollView:
-                    WireScrollView(plan, go, index);
+                    WireScrollView(plan, go, index, key);
                     break;
                 case ControlKind.Dropdown:
-                    WireDropdown(plan, go, index, context);
+                    WireDropdown(plan, go, index, key, context);
                     break;
                 case ControlKind.InputField:
-                    WireInputField(plan, go, index, context);
+                    WireInputField(plan, go, index, key, context);
                     break;
             }
         }
 
-        private static void WireButton(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
-            PrefabBuildContext context)
+        private static void WireButton(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key, PrefabBuildContext context)
         {
-            var button = go.AddComponent<Button>();
-            GameObject target = Slot(plan, index, PrefabPlanner.SlotTarget);
-            Graphic graphic = GraphicOn(target) ?? go.GetComponent<Graphic>();
+            var button = GetOrAdd<Button>(go);
+            GameObject target = Slot(plan, index, key, PrefabPlanner.SlotTarget);
+            Graphic graphic = GraphicOn(target);
+            if (graphic == null)
+            {
+                graphic = go.GetComponent<Graphic>();
+            }
+
             button.targetGraphic = graphic;
 
             PlanSpriteState state = plan.State;
@@ -240,19 +465,20 @@ namespace Psd2Ugui.Editor.Build
             }
         }
 
-        private static void WireToggle(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index)
+        private static void WireToggle(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key)
         {
-            var toggle = go.AddComponent<Toggle>();
-            toggle.targetGraphic = GraphicOn(Slot(plan, index, PrefabPlanner.SlotTarget));
-            toggle.graphic = GraphicOn(Slot(plan, index, PrefabPlanner.SlotCheckmark));
+            var toggle = GetOrAdd<Toggle>(go);
+            toggle.targetGraphic = GraphicOn(Slot(plan, index, key, PrefabPlanner.SlotTarget));
+            toggle.graphic = GraphicOn(Slot(plan, index, key, PrefabPlanner.SlotCheckmark));
         }
 
-        private static void WireSlider(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
-            PrefabBuildContext context)
+        private static void WireSlider(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key, PrefabBuildContext context)
         {
-            var slider = go.AddComponent<Slider>();
-            GameObject fill = Slot(plan, index, PrefabPlanner.SlotFill);
-            GameObject handle = Slot(plan, index, PrefabPlanner.SlotHandle);
+            var slider = GetOrAdd<Slider>(go);
+            GameObject fill = Slot(plan, index, key, PrefabPlanner.SlotFill);
+            GameObject handle = Slot(plan, index, key, PrefabPlanner.SlotHandle);
             slider.fillRect = RectOf(fill);
             slider.handleRect = HandleRect(plan, go, handle, context);
             slider.targetGraphic = GraphicOn(handle) ?? GraphicOn(fill) ?? go.GetComponent<Graphic>();
@@ -275,11 +501,11 @@ namespace Psd2Ugui.Editor.Build
             }
         }
 
-        private static void WireScrollbar(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
-            PrefabBuildContext context)
+        private static void WireScrollbar(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key, PrefabBuildContext context)
         {
-            var scrollbar = go.AddComponent<Scrollbar>();
-            GameObject handle = Slot(plan, index, PrefabPlanner.SlotHandle);
+            var scrollbar = GetOrAdd<Scrollbar>(go);
+            GameObject handle = Slot(plan, index, key, PrefabPlanner.SlotHandle);
             scrollbar.handleRect = HandleRect(plan, go, handle, context);
             scrollbar.targetGraphic = GraphicOn(handle) ?? go.GetComponent<Graphic>();
             scrollbar.direction = plan.Axis == PlanAxis.Vertical
@@ -287,15 +513,18 @@ namespace Psd2Ugui.Editor.Build
                 : Scrollbar.Direction.LeftToRight;
         }
 
-        private static void WireScrollView(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index)
+        private static void WireScrollView(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key)
         {
-            var scroll = go.AddComponent<ScrollRect>();
-            GameObject viewport = Slot(plan, index, PrefabPlanner.SlotViewport);
-            GameObject content = Slot(plan, index, PrefabPlanner.SlotContent);
+            var scroll = GetOrAdd<ScrollRect>(go);
+            GameObject viewport = Slot(plan, index, key, PrefabPlanner.SlotViewport);
+            GameObject content = Slot(plan, index, key, PrefabPlanner.SlotContent);
             scroll.viewport = RectOf(viewport);
             scroll.content = RectOf(content);
-            scroll.verticalScrollbar = ComponentOn<Scrollbar>(Slot(plan, index, PrefabPlanner.SlotVerticalScrollbar));
-            scroll.horizontalScrollbar = ComponentOn<Scrollbar>(Slot(plan, index, PrefabPlanner.SlotHorizontalScrollbar));
+            scroll.verticalScrollbar = ComponentOn<Scrollbar>(
+                Slot(plan, index, key, PrefabPlanner.SlotVerticalScrollbar));
+            scroll.horizontalScrollbar = ComponentOn<Scrollbar>(
+                Slot(plan, index, key, PrefabPlanner.SlotHorizontalScrollbar));
             scroll.vertical = scroll.verticalScrollbar != null || scroll.horizontalScrollbar == null;
             scroll.horizontal = scroll.horizontalScrollbar != null;
             scroll.movementType = ScrollRect.MovementType.Elastic;
@@ -314,14 +543,14 @@ namespace Psd2Ugui.Editor.Build
             }
         }
 
-        private static void WireDropdown(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
-            PrefabBuildContext context)
+        private static void WireDropdown(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key, PrefabBuildContext context)
         {
-            var dropdown = go.AddComponent<Dropdown>();
-            GameObject template = Slot(plan, index, PrefabPlanner.SlotTemplate);
+            var dropdown = GetOrAdd<Dropdown>(go);
+            GameObject template = Slot(plan, index, key, PrefabPlanner.SlotTemplate);
             dropdown.template = RectOf(template);
-            dropdown.captionText = ComponentOn<Text>(Slot(plan, index, PrefabPlanner.SlotCaptionText));
-            dropdown.itemText = ComponentOn<Text>(Slot(plan, index, PrefabPlanner.SlotItemText));
+            dropdown.captionText = ComponentOn<Text>(Slot(plan, index, key, PrefabPlanner.SlotCaptionText));
+            dropdown.itemText = ComponentOn<Text>(Slot(plan, index, key, PrefabPlanner.SlotItemText));
             dropdown.targetGraphic = go.GetComponent<Graphic>();
 
             if (dropdown.template == null)
@@ -331,13 +560,13 @@ namespace Psd2Ugui.Editor.Build
             }
         }
 
-        private static void WireInputField(PlanNode plan, GameObject go, Dictionary<PlanNode, GameObject> index,
-            PrefabBuildContext context)
+        private static void WireInputField(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,
+            string key, PrefabBuildContext context)
         {
-            var field = go.AddComponent<InputField>();
-            GameObject text = Slot(plan, index, PrefabPlanner.SlotTextComponent);
+            var field = GetOrAdd<InputField>(go);
+            GameObject text = Slot(plan, index, key, PrefabPlanner.SlotTextComponent);
             field.textComponent = ComponentOn<Text>(text);
-            field.placeholder = GraphicOn(Slot(plan, index, PrefabPlanner.SlotPlaceholder));
+            field.placeholder = GraphicOn(Slot(plan, index, key, PrefabPlanner.SlotPlaceholder));
             field.targetGraphic = go.GetComponent<Graphic>();
             field.lineType = InputField.LineType.SingleLine;
 
@@ -366,11 +595,24 @@ namespace Psd2Ugui.Editor.Build
             return (RectTransform)go.transform;
         }
 
-        private static GameObject Slot(PlanNode plan, Dictionary<PlanNode, GameObject> index, string slot)
+        private static GameObject Slot(PlanNode plan, Dictionary<string, GameObject> index, string key,
+            string slot)
         {
             PlanNode node;
+            if (!plan.Slots.TryGetValue(slot, out node))
+            {
+                return null;
+            }
+
             GameObject go;
-            return plan.Slots.TryGetValue(slot, out node) && index.TryGetValue(node, out go) ? go : null;
+            return index.TryGetValue(PlanKeys.Join(key, PlanKeys.Key(node)), out go) ? go : null;
+        }
+
+        /// <summary>取组件，没有才加：增量更新会重复走同一段装配代码。</summary>
+        private static T GetOrAdd<T>(GameObject go) where T : Component
+        {
+            var component = go.GetComponent<T>();
+            return component != null ? component : go.AddComponent<T>();
         }
 
         private static RectTransform RectOf(GameObject go)

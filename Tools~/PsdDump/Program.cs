@@ -9,6 +9,7 @@ using Psd2Ugui.Core.Build;
 using Psd2Ugui.Core.Pipeline;
 using Psd2Ugui.Core.Semantics;
 using Psd2Ugui.Core.Psd;
+using Psd2Ugui.Editor.Import;
 
 namespace Psd2Ugui.Tools
 {
@@ -27,6 +28,7 @@ namespace Psd2Ugui.Tools
                 Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
                 Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
                 Console.WriteLine("      [--export-dir dir] [--module name] [--no-nine-slice] [--prefab-plan out.json]");
+                Console.WriteLine("      [--shared-dir manifest目录]");
                 return 2;
             }
 
@@ -39,6 +41,7 @@ namespace Psd2Ugui.Tools
             string spritesPath = null;
             string exportDir = null;
             string prefabPlanPath = null;
+            string sharedDir = null;
             ExportOptions exportOptions = new ExportOptions();
             string module = null;
             bool noNineSlice = false;
@@ -91,6 +94,16 @@ namespace Psd2Ugui.Tools
                 {
                     prefabPlanPath = Next(args, ref i);
                 }
+                else if (args[i] == "--shared-dir")
+                {
+                    sharedDir = Next(args, ref i);
+                }
+            }
+
+            int sharedCount = 0;
+            if (!string.IsNullOrEmpty(sharedDir))
+            {
+                exportOptions.Shared = LoadShared(sharedDir, out sharedCount);
             }
 
 
@@ -169,7 +182,7 @@ namespace Psd2Ugui.Tools
             if (!string.IsNullOrEmpty(exportDir))
             {
                 Console.WriteLine();
-                Console.WriteLine(Export(file, document, exportDir, module, !noNineSlice));
+                Console.WriteLine(Export(file, document, exportDir, module, !noNineSlice, exportOptions.Shared));
             }
 
             if (!string.IsNullOrEmpty(prefabPlanPath))
@@ -499,9 +512,9 @@ namespace Psd2Ugui.Tools
         /// 这是 Unity 侧 SpriteExporter 的无 Unity 版本，用来在命令行端到端验证「解析 → 计划 → PNG」。
         /// </summary>
         private static string Export(PsdFile file, UiDocument document, string directory, string module,
-            bool nineSlice)
+            bool nineSlice, SharedSpriteTable shared = null)
         {
-            var options = new ExportOptions { DetectNineSlice = nineSlice };
+            var options = new ExportOptions { DetectNineSlice = nineSlice, Shared = shared };
             if (!string.IsNullOrEmpty(module))
             {
                 options.Module = module;
@@ -527,8 +540,17 @@ namespace Psd2Ugui.Tools
             string contractFile = Path.Combine(contractDir, Path.GetFileNameWithoutExtension(file.FileName) + ".json");
             File.WriteAllText(contractFile, ContractJson.ToJsonText(document), new UTF8Encoding(false));
 
+            // 和 Unity 侧一样写一份身份映射：另一个 PSD 用 --shared-dir 指到这里就能复用这些图
+            var manifest = new Psd2UguiManifest();
+            manifest.Update(plan, file.FileName);
+            string manifestDir = Path.Combine(directory, "manifest", plan.Module);
+            Directory.CreateDirectory(manifestDir);
+            manifest.Save(Path.Combine(manifestDir,
+                StableId.Sanitize(Path.GetFileNameWithoutExtension(file.FileName)) + Psd2UguiManifest.FileName));
+
             return "已导出资源: " + plan.Sprites.Count + " 张（可切 " + plan.SliceableCount + "）-> " + spriteDir +
-                   "\n  共 " + bytes + " 字节；契约: " + contractFile;
+                   "\n  共 " + bytes + " 字节；契约: " + contractFile +
+                   "\n  身份映射: " + manifestDir;
         }
 
         private static int DumpSprites(PsdFile file, UiDocument document, string directory)
@@ -590,6 +612,36 @@ namespace Psd2Ugui.Tools
 
             File.WriteAllText(Path.Combine(directory, "index.json"), index.ToJsonString(true), new UTF8Encoding(false));
             return written;
+        }
+
+        /// <summary>
+        /// 读一个目录下所有身份映射文件，汇总成共享贴图表。
+        /// 目录可以是 `manifest/&lt;模块&gt;`，也可以是整个 manifest 根目录。
+        /// </summary>
+        private static SharedSpriteTable LoadShared(string directory, out int manifestFiles)
+        {
+            manifestFiles = 0;
+            var texts = new List<string>();
+            if (Directory.Exists(directory))
+            {
+                string[] found = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
+                Array.Sort(found, StringComparer.Ordinal);
+                for (int i = 0; i < found.Length; i++)
+                {
+                    if (!Psd2UguiManifest.IsManifestPath(found[i]))
+                    {
+                        continue;
+                    }
+
+                    texts.Add(File.ReadAllText(found[i]));
+                    manifestFiles++;
+                }
+            }
+
+            SharedSpriteTable table = SharedSpriteTable.Load(texts);
+            Console.WriteLine("共享资源库: " + table.Sprites.Count + " 张图（来自 " + manifestFiles + " 个映射文件，" +
+                              directory + "）");
+            return table;
         }
 
         private static string Next(string[] args, ref int index)

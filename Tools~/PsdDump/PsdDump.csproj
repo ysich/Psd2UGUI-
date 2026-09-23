@@ -14,6 +14,8 @@
 
   <ItemGroup>
     <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
+    <!-- 身份映射是纯数据（只用 BCL + Core），命令行侧也用它写出共享资源库 -->
+    <Compile Include="../../Editor/Import/Psd2UguiManifest.cs" LinkBase="EditorSource" />
     <Compile Include="*.cs" />
   </ItemGroup>
 

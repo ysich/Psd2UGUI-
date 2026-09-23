@@ -32,5 +32,12 @@ namespace Psd2Ugui.Core.Pipeline
 
         /// <summary>九宫检测的选项。</summary>
         public Imaging.NineSliceOptions NineSlice = new Imaging.NineSliceOptions();
+
+        /// <summary>
+        /// 已经导出过的共享贴图（其它界面/模块产出的）。
+        /// 本文件里找不到的 `ref` 引用会来这里按「模块 / 名字」找，
+        /// 找到就直接复用，同一张图不会在工程里存两份。留空表示不做跨文件复用。
+        /// </summary>
+        public SharedSpriteTable Shared;
     }
 }

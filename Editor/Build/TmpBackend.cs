@@ -16,6 +16,9 @@ namespace Psd2Ugui.Editor.Build
 
         /// <summary>把渐变填充套成 TMP 的顶点渐变；做不了就返回 false。</summary>
         bool ApplyGradient(GameObject target, UiEffect effect);
+
+        /// <summary>节点改成别的类型时，把旧的 TMP 文本组件摘掉。</summary>
+        bool RemoveText(GameObject target);
     }
 
     /// <summary>TMP 后端的注册表。</summary>

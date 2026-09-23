@@ -122,6 +122,11 @@ namespace Psd2Ugui.Core.Build
                 plan.Color = node.Fill;
             }
 
+            if (node.IsPrefabReference && !string.IsNullOrEmpty(node.ReferenceTarget))
+            {
+                plan.PrefabTarget = node.ReferenceTarget;
+            }
+
             ApplySprite(context, node, plan);
             PlanChildren(context, node, plan);
             return plan;

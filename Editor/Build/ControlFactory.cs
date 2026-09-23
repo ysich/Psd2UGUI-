@@ -91,17 +91,61 @@ namespace Psd2Ugui.Editor.Build
                     break;
             }
 
-            if (plan.Kind == ControlKind.Rect && plan.Opacity < 0.999d && plan.Children.Count > 0)
+            if (plan.Kind == ControlKind.Rect && plan.Children.Count > 0)
             {
                 // 容器自己没颜色可乘，只能用 CanvasGroup 整体压透明度
-                var group = target.AddComponent<CanvasGroup>();
-                group.alpha = (float)plan.Opacity;
+                var group = target.GetComponent<CanvasGroup>();
+                if (plan.Opacity < 0.999d)
+                {
+                    if (group == null)
+                    {
+                        group = target.AddComponent<CanvasGroup>();
+                    }
+
+                    group.alpha = (float)plan.Opacity;
+                }
+                else if (group != null)
+                {
+                    // 透明度调回 1 了，多出来的 CanvasGroup 会挡住射线，摘掉
+                    UnityEngine.Object.DestroyImmediate(group, true);
+                }
+            }
+        }
+
+        /// <summary>取组件，没有才加。增量更新会重复走同一条装配路径，不能每次 AddComponent。</summary>
+        internal static T GetOrAdd<T>(GameObject target) where T : Component
+        {
+            var component = target.GetComponent<T>();
+            return component != null ? component : target.AddComponent<T>();
+        }
+
+        /// <summary>
+        /// 这个节点最终该长成哪种「视觉件」。
+        /// 复合控件（按钮/开关…）本身也可能带底图，这时也算图片。
+        /// </summary>
+        public static ControlKind VisualKind(PlanNode plan)
+        {
+            switch (plan.Kind)
+            {
+                case ControlKind.Image:
+                case ControlKind.Panel:
+                case ControlKind.Mask:
+                case ControlKind.FillColor:
+                    return ControlKind.Image;
+                case ControlKind.RawImage:
+                    return ControlKind.RawImage;
+                case ControlKind.Text:
+                    return ControlKind.Text;
+                case ControlKind.TmpText:
+                    return ControlKind.TmpText;
+                default:
+                    return string.IsNullOrEmpty(plan.SpriteId) ? ControlKind.Rect : ControlKind.Image;
             }
         }
 
         private static void AddImage(PlanNode plan, GameObject target, PrefabBuildContext context)
         {
-            var image = target.AddComponent<Image>();
+            var image = GetOrAdd<Image>(target);
             image.sprite = context.Sprite(plan.SpriteId);
             image.color = ColorFor(plan, (float)plan.Opacity);
             if (image.sprite != null)
@@ -114,23 +158,25 @@ namespace Psd2Ugui.Editor.Build
                 // 有底图时用 Mask（画笔形状遮罩），没有就退化成矩形遮罩
                 if (image.sprite != null)
                 {
-                    var mask = target.AddComponent<Mask>();
+                    var mask = GetOrAdd<Mask>(target);
                     mask.showMaskGraphic = false;
                 }
                 else
                 {
-                    target.AddComponent<RectMask2D>();
+                    var rectMask = GetOrAdd<RectMask2D>(target);
+                    rectMask.enabled = true;
                 }
             }
             else if (plan.Kind == ControlKind.Panel && plan.Clipping)
             {
-                target.AddComponent<RectMask2D>();
+                var rectMask = GetOrAdd<RectMask2D>(target);
+                rectMask.enabled = true;
             }
         }
 
         private static void AddRawImage(PlanNode plan, GameObject target, PrefabBuildContext context)
         {
-            var image = target.AddComponent<RawImage>();
+            var image = GetOrAdd<RawImage>(target);
             Sprite sprite = context.Sprite(plan.SpriteId);
             if (sprite != null)
             {
@@ -143,7 +189,7 @@ namespace Psd2Ugui.Editor.Build
         private static void AddText(PlanNode plan, GameObject target, PrefabBuildContext context)
         {
             UiTextInfo info = plan.Text;
-            var text = target.AddComponent<Text>();
+            var text = GetOrAdd<Text>(target);
             text.text = info == null ? plan.Name : info.Content;
             text.font = context.Font(info == null ? null : info.FontName);
             text.fontSize = FontSize(info);

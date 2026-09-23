@@ -180,6 +180,18 @@ namespace Psd2Ugui.Core.Build
         /// <summary>被吸收掉的契约节点（例如按钮的按下态贴图），不再生成 GameObject。</summary>
         public readonly List<string> ConsumedNodeIds = new List<string>();
 
+        /// <summary>
+        /// `refp` 引用的子预制体名。非空时这个节点会以预制体实例的形式出现，
+        /// 不再按图层生成子对象。
+        /// </summary>
+        public string PrefabTarget;
+
+        /// <summary>受管属性的指纹，重新导出时用来判断「这个节点要不要动」。</summary>
+        public string SpecHash
+        {
+            get { return PlanSpec.Hash(this); }
+        }
+
         public PlanNode Add(PlanNode child)
         {
             Children.Add(child);

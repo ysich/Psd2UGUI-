@@ -18,7 +18,13 @@ namespace Psd2Ugui.Editor.Tmp
     {
         public Graphic AddText(GameObject target, UiTextInfo info, double opacity)
         {
-            var text = target.AddComponent<TextMeshProUGUI>();
+            // 增量更新会重复走同一条路径，已存在就复用
+            var text = target.GetComponent<TextMeshProUGUI>();
+            if (text == null)
+            {
+                text = target.AddComponent<TextMeshProUGUI>();
+            }
+
             text.text = info == null ? target.name : info.Content;
             text.fontSize = (float)(info == null || info.FontSize <= 0d ? 24d : info.FontSize);
             Color color = (info == null ? UiColor.White : info.Color).ToColor();
@@ -36,6 +42,18 @@ namespace Psd2Ugui.Editor.Tmp
             }
 
             return text;
+        }
+
+        public bool RemoveText(GameObject target)
+        {
+            var text = target.GetComponent<TextMeshProUGUI>();
+            if (text == null)
+            {
+                return false;
+            }
+
+            Object.DestroyImmediate(text, true);
+            return true;
         }
 
         public bool ApplyGradient(GameObject target, UiEffect effect)

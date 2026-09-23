@@ -206,12 +206,53 @@ namespace Psd2Ugui.Core.Pipeline
                     continue;
                 }
 
-                // 本文件里没有：留给共享资源库按“模块/名字”去找（跨界面复用）
                 node.ResourceId = StableId.ResourceId(UiResourceKind.Sprite, plan.Module + "/" + target);
+
+                SharedSprite shared = options.Shared == null ? null : options.Shared.Find(plan.Module, target);
+                if (shared != null && ReuseShared(document, plan, node, shared))
+                {
+                    continue;
+                }
+
+                // 本文件里没有、共享资源库里也没有：只能报出来
                 plan.ExternalReferences.Add(node);
                 document.Report(DiagnosticSeverity.Warning, "resource.reference-external",
-                    "引用目标不在本文件内，将按模块内的共享资源解析：" + target, node);
+                    "引用目标不在本文件内，也没在共享资源库里找到，节点不会有贴图：" + target, node);
             }
+        }
+
+        /// <summary>
+        /// 复用别的界面导出过的贴图：不落盘，只把身份信息记下来，
+        /// 让契约里能找到它、让重新导出时的清理逻辑知道这张图还有人用。
+        /// </summary>
+        private static bool ReuseShared(UiDocument document, ExportPlan plan, UiNode node, SharedSprite shared)
+        {
+            for (int i = 0; i < plan.Reused.Count; i++)
+            {
+                if (plan.Reused[i].Id == node.ResourceId)
+                {
+                    plan.SharedReferences.Add(node);
+                    return true;
+                }
+            }
+
+            plan.Reused.Add(new UiResource
+            {
+                Id = node.ResourceId,
+                Kind = UiResourceKind.Sprite,
+                Name = shared.Name,
+                Module = shared.Module,
+                FileName = shared.FileName,
+                ContentHash = shared.ContentHash,
+                Width = shared.Width,
+                Height = shared.Height,
+                Border = shared.Border,
+                Shared = true
+            });
+            plan.SharedReferences.Add(node);
+            document.Report(DiagnosticSeverity.Info, "resource.reference-shared",
+                "引用的是共享资源库里已有的图，直接复用：" + shared.Name + "（模块 " + shared.Module + "）", node);
+            return true;
         }
 
         private static void BuildResources(UiDocument document, ExportOptions options, ExportPlan plan)
@@ -237,6 +278,12 @@ namespace Psd2Ugui.Core.Pipeline
                 });
             }
 
+            // 复用来的共享贴图也要进资源表，否则装配时找不到它
+            for (int i = 0; i < plan.Reused.Count; i++)
+            {
+                plan.Resources.Add(plan.Reused[i]);
+            }
+
             document.Resources.Clear();
             document.Resources.AddRange(plan.Resources);
         }
@@ -248,6 +295,8 @@ namespace Psd2Ugui.Core.Pipeline
             document.Stats["spriteShared"] = CountShared(plan).ToString();
             document.Stats["referencesLocal"] = plan.LocalReferences.Count.ToString();
             document.Stats["referencesExternal"] = plan.ExternalReferences.Count.ToString();
+            document.Stats["referencesShared"] = plan.SharedReferences.Count.ToString();
+            document.Stats["spritesReused"] = plan.Reused.Count.ToString();
         }
 
         private static int CountShared(ExportPlan plan)

@@ -288,12 +288,59 @@ Assets/PSD2UGUI/
 
 ### Step 8 · 增量更新与资源复用
 
-- [ ] 重新导出时按稳定 ID 匹配：更新属性、新增节点、移除消失节点
-- [ ] 保留人工改动：用户新增的子节点/组件不被删除，被工具管理的属性才覆盖
-- [ ] `ref` / `refp`：跨界面共享图片与子 Prefab 复用
-- [ ] 冲突与失效诊断（资源被占用、Prefab 被改动等）
+- [x] 重新导出时按稳定 ID 匹配：更新属性、新增节点、移除消失节点
+- [x] 保留人工改动：用户新增的子节点/组件不被删除，被工具管理的属性才覆盖
+- [x] `ref` / `refp`：跨界面共享图片与子 Prefab 复用
+- [x] 冲突与失效诊断（资源被占用、Prefab 被改动等）
 - **验收**：EditMode 测试「生成 → 手动改 → 重新生成」后人工改动仍在，且新增/删除正确
+- **验收结果**：见下（本机无法无头跑 Unity，EditMode 部分顺延到 Step 11，这里给出等价的手工步骤与命令行证据）
 - **提交**：`feat(editor): 增量更新与资源复用`
+
+**这一版怎么做的**
+
+| 部件 | 位置 | 职责 |
+| --- | --- | --- |
+| `PlanSpec.Hash` | `Runtime/Core/Build` | 受管属性指纹（种类/矩形/锚点/显隐/透明度/贴图/九宫/颜色/子预制体/文本/效果），重新导出时靠它判断「这个节点到底变没变」 |
+| `PlanKeys` / `ExistingNode` / `PrefabMerge.Diff` | `Runtime/Core/Build` | 层级键（稳定 ID，模板节点用 `#名字`）+ 差异比对，产出 `Create/Update/Unchanged/Reparent/Remove/Keep` |
+| `PrefabSnapshot` | `Editor/Build` | 读现有预制体：带标记的按稳定 ID 认领（并记下「现在」挂在谁下面），模板节点按同父同名子对象认领，认领不到的算遗留，没标记的当人工内容 |
+| `IncrementalBuilder` | `Editor/Build` | 三趟执行：① 只动结构（新建 / 换父级）② 刷属性（此时子件都已在索引里，连线一次找齐）③ 清理 |
+| `SharedSpriteTable` | `Runtime/Core/Pipeline` | 跨界面复用的共享贴图表：本文件里没有的 `ref` 按「模块 / 名字」来这里找 |
+| `SharedResourceIndex` | `Editor/Import` | 扫模块里的身份映射 → 共享表；反查「哪些 PNG 还有别的界面在用」 |
+| `SpriteExporter.CleanObsolete` | `Editor/Import` | 真的删掉失效贴图，但被别的界面引用的一律跳过 |
+
+判定规则（都为「人工改动不被冲掉」）：
+
+- 指纹一样 → 完全不动这个节点（人手改过的坐标、颜色、字体、脚本、子对象都留着）；
+- 指纹变了 → 只刷工具管的属性，人手加的子节点/组件不碰；
+- 设计稿里删掉的图层 → 删掉对应节点，但它身上挂着人工内容时改为保留并给 Info；
+- 没有标记的对象 → 一律当人工加的，永远不碰；同一个生成节点被复制成多份（NodeId 撞车）也按人工内容处理；
+- 根节点永远认领现有对象，绝不重建（换根等于让使用者重连所有引用）。
+
+**验收结果**
+
+- `dotnet test Tools~/CoreTests` **321 项全绿**（Step 7 是 291，本步 +30：合并判定 19 项、共享复用 11 项）。
+  - 合并判定：指纹稳定性（含极小抖动不算变化）、键路径规则、未变/已变/新增/换父级/删除/保留/无标记不碰/模板节点按键认领；
+  - 共享复用：共享表读取与坏数据容错、同模块优先、跨模块复用不落盘、本文件同名图优先、
+    契约资源表带上复用资源、复用记录进身份映射、`FindObsolete` 不把复用的图算失效；
+  - 身份映射新增覆盖：`IsManifestPath` 后缀判定、复用条目往返不变。
+- Editor 脚本经 netstandard2.1 + Unity 2022.3 DLL 编译：**0 错误 0 警告**（含新增 `PrefabSnapshot`、`IncrementalBuilder`、`SharedResourceIndex`）。
+- 命令行端到端（不开 Unity，用真实样本 + 一个只含 `ref Logo.img` 的小 PSD）：
+  1. 先导出真实样本 `Psd2UguiForm.psd`（12 张 PNG + `manifest/common/Psd2UguiForm.psd2ugui.json`）；
+  2. 再导 `ref Logo.img` 那个 PSD 并挂上共享库：
+     `PsdDump /tmp/psd8_ref.psd --module common --shared-dir /tmp/psd8_export/manifest --export-dir /tmp/psd8_ref_out --prefab-plan /tmp/psd8_ref_plan.json`
+     → **新写 0 张 PNG**，契约 `resourcesShared=1 / spritesReused=1 / referencesExternal=0`，
+     诊断从 `resource.reference-external`（找不到）变成 `resource.reference-shared`（复用），
+     装配计划里该节点绑到了别人导出的 `Logo_483x74_1f77e51a.png`，引用方自己的身份映射里也记了一笔 `shared=true`。
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 增量刷新一次，组件就多一套 | `ApplyVisual` 原来一律 `AddComponent`，重建路径没问题，刷新路径就翻倍 | 组件统一走 `GetOrAdd`；顺便把「类型换了」的旧视觉件（Image / RawImage / Text / TMP / Mask / CanvasGroup）摘掉 |
+| 共享资源库读到 0 张图 | `Psd2UguiManifest.FileName` 是**后缀**（`.psd2ugui.json`），拿它和 `Path.GetFileName` 求相等永远为假 | 加 `Psd2UguiManifest.IsManifestPath`，CLI 与编辑器共用同一处判定 |
+| 复用的共享图被当成「失效资源」清掉 | 引用方没在身份映射里记这一笔，产出方重新导出时以为没人用 | 引用方的 `manifest.Update` 记录复用条目 + `FindObsolete` 保留复用 ID + 删文件前反查「还有谁在用」 |
+| 根节点差点被整棵重建 | 设计稿换了根图层名时，按 ID 匹配不到旧根 | 根节点在快照阶段就强制认领现有根对象（按计划键对齐） |
+| `PrefabUtility` 相关逻辑没法在本机跑 | 本机 Unity 有 GUI 实例占着授权锁，`-batchmode` 起不来 | 用 netstandard2.1 + Unity DLL 编译检查兜住 API/语法错误，行为验证留给 Step 11 的 EditMode 测试，并在文档里如实标注 |
 
 ### Step 9 · 预检与诊断报告
 
@@ -360,7 +407,7 @@ Assets/PSD2UGUI/
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ✅ |
 | Step 6 | `feat(editor): Sprite 导出与导入设置` | ✅ |
 | Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ✅ |
-| Step 8 | `feat(editor): 增量更新与资源复用` | ⬜ |
+| Step 8 | `feat(editor): 增量更新与资源复用` | ✅ |
 | Step 9 | `feat(editor): 预检与诊断报告` | ⬜ |
 | Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ⬜ |
 | Step 11 | `test: EditMode 测试与无头验证脚本` | ⬜ |

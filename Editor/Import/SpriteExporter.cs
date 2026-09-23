@@ -17,6 +17,7 @@ namespace Psd2Ugui.Editor.Import
         public int Reused;
         public int Failed;
         public int Obsolete;
+        public int Removed;
         public int Reimported;
 
         public string SpriteDirectory = string.Empty;
@@ -26,7 +27,7 @@ namespace Psd2Ugui.Editor.Import
         public string BuildSummary()
         {
             return "贴图 " + Total + "（新写 " + Written + "，复用 " + Reused + "，失败 " + Failed +
-                   "），重设导入 " + Reimported + "，失效 " + Obsolete;
+                   "），重设导入 " + Reimported + "，失效 " + Obsolete + "（已清理 " + Removed + "）";
         }
     }
 
@@ -64,7 +65,7 @@ namespace Psd2Ugui.Editor.Import
             }
 
             Psd2UguiManifest manifest = Psd2UguiManifest.Load(report.ManifestPath);
-            ReportObsolete(manifest, plan, document, report);
+            CleanObsolete(manifest, plan, options, document, report);
 
             Psd2UguiPaths.EnsureAssetFolder(spriteDir);
 
@@ -259,16 +260,77 @@ namespace Psd2Ugui.Editor.Import
             return Math.Min(size, 8192);
         }
 
-        private static void ReportObsolete(Psd2UguiManifest manifest, ExportPlan plan, UiDocument document,
-            SpriteExportReport report)
+        /// <summary>
+        /// 清理上次导出留下、这次用不到的资源。
+        ///
+        /// 只删「没有任何界面还在引用」的文件：别的界面共用同一张图时，
+        /// 那台界面的身份映射里还记着它，这里就会跳过。
+        /// </summary>
+        private static void CleanObsolete(Psd2UguiManifest manifest, ExportPlan plan, ExportOptions options,
+            UiDocument document, SpriteExportReport report)
         {
             List<Psd2UguiManifest.ManifestEntry> obsolete = manifest.FindObsolete(plan);
             report.Obsolete = obsolete.Count;
+            if (obsolete.Count == 0)
+            {
+                return;
+            }
+
+            HashSet<string> inUse = SharedResourceIndex.InUseSpriteFiles(options, report.ManifestPath);
+            string spriteDir = Psd2UguiPaths.SpriteDirectory(options);
             for (int i = 0; i < obsolete.Count; i++)
             {
                 Psd2UguiManifest.ManifestEntry entry = obsolete[i];
-                Report(document, DiagnosticSeverity.Info, "resource.obsolete",
-                    "上次导出留下、这次用不到的资源（Step 8 会清理）：" + entry.Name + " (" + entry.File + ")");
+                string path = spriteDir + "/" + entry.File;
+                if (inUse.Contains(path))
+                {
+                    Report(document, DiagnosticSeverity.Info, "resource.obsolete-shared",
+                        "这张图别的界面还在用，保留：" + entry.Name + " (" + entry.File + ")");
+                    continue;
+                }
+
+                if (DeleteSprite(path))
+                {
+                    report.Removed++;
+                    Report(document, DiagnosticSeverity.Info, "resource.removed",
+                        "已清理失效贴图（设计稿里已经没有了）：" + entry.Name + " (" + entry.File + ")");
+                }
+                else
+                {
+                    Report(document, DiagnosticSeverity.Warning, "resource.remove-failed",
+                        "清理失效贴图失败，请手动删除：" + path);
+                }
+            }
+        }
+
+        private static bool DeleteSprite(string path)
+        {
+            if (!File.Exists(path))
+            {
+                // 文件已经不在（被人删了或从没落盘）：当作已清理
+                AssetDatabase.Refresh();
+                return true;
+            }
+
+            if (Psd2UguiPaths.IsInsideAssets(path))
+            {
+                AssetDatabase.DeleteAsset(path);
+            }
+
+            if (!File.Exists(path))
+            {
+                return true;
+            }
+
+            try
+            {
+                File.Delete(path);
+                AssetDatabase.Refresh();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 

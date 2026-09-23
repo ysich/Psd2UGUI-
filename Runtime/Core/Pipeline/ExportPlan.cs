@@ -19,6 +19,12 @@ namespace Psd2Ugui.Core.Pipeline
         /// <summary>目标不在本文件内、需要去共享资源库里找的引用节点。</summary>
         public readonly List<UiNode> ExternalReferences = new List<UiNode>();
 
+        /// <summary>本文件没有、但从共享资源库里复用到的贴图（不落盘，直接引用别人的文件）。</summary>
+        public readonly List<UiResource> Reused = new List<UiResource>();
+
+        /// <summary>从共享资源库里复用成功的引用节点。</summary>
+        public readonly List<UiNode> SharedReferences = new List<UiNode>();
+
         public int SliceableCount
         {
             get
