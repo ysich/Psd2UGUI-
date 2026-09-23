@@ -284,6 +284,7 @@ Assets/PSD2UGUI/
 | `DropDown`/`InputField` 的文字类型对不上 | uGUI 的 Dropdown / InputField 只认老 `Text` 组件 | 在计划层就把这两处的 TMP 图层改成 `Text`，而不是在 Editor 侧偷偷换组件（有诊断说明） |
 | 组件挂着空 `handleRect`，拖动没反馈 | 设计稿常常没画滑块图层 | `Slider`/`Scrollbar` 的 handleRect 退化成自身矩形，并给提示 |
 | `GetComponent<T>() ?? AddComponent<T>()` 有隐患 | `??` 走的是 CLR 空判断，绕过 Unity 重载的 `==`（已销毁对象是「假空」） | 一律写成 `if (x == null) x = ...` |
+| 源码目录 `Runtime/Core/Build`、`Editor/Build` 没进仓库 | 标准 Unity `.gitignore` 里的 `[Bb]uild/` 会把任何叫 `Build` 的目录都排除掉，`git add -A` 也救不回来（这一步是靠对提交内容再核对一遍才发现的） | 在 `[Bb]uild/` 之后加 `!Runtime/Core/Build/**`、`!Editor/Build/**` 放行；提交后要核对 `git show --stat` 与 `git ls-files` |
 
 ### Step 8 · 增量更新与资源复用
 

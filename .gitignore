@@ -10,6 +10,12 @@
 [Oo]bj/
 [Bb]uild/
 [Bb]uilds/
+# 例外：这两个 Build 目录放的是源码（装配计划与 Prefab 装配），不是构建产物。
+# 放行必须写在 [Bb]uild/ 之后，否则前面的忽略规则会先把整个目录排除掉。
+!Runtime/Core/Build/
+!Runtime/Core/Build/**
+!Editor/Build/
+!Editor/Build/**
 [Ll]ogs/
 [Uu]serSettings/
 [Mm]emoryCaptures/
