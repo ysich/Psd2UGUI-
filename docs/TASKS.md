@@ -516,11 +516,42 @@ SKIP_UNITY_TESTS=1 bash Tools~/run-tests.sh                 # CI 里只跑 dotne
 
 ### Step 12 · 文档与收尾
 
-- [ ] `docs/ARCHITECTURE.md`、`docs/CONTRACT.md`、`docs/USAGE.md`、`docs/LIMITATIONS.md`
-- [ ] `README.md` 完善（安装、快速开始、参数说明、FAQ）
-- [ ] `CHANGELOG.md`，版本 `0.1.0`
+- [x] `docs/ARCHITECTURE.md`、`docs/CONTRACT.md`、`docs/USAGE.md`、`docs/LIMITATIONS.md`
+- [x] `README.md` 完善（安装、快速开始、产物说明、文档索引、开发命令）
+- [x] `CHANGELOG.md`，版本 `0.1.0`
 - **验收**：新用户按文档可独立完成一次 PSD → Prefab；限制说明与实现一致
+- **验收结果**：文档里的每一条命令都实跑过一遍（`run-tests.sh` 五项、`dev-project.sh` 各种参数、
+  三个 `PsdDump` 用法、批处理的四个开关）。文档里引用的字段名、默认值、诊断码、退出码
+  全部对着代码核过；`LIMITATIONS.md` 里「做不到」的每条都能在实现里找到对应分支或诊断。
 - **提交**：`docs: 完善使用与架构文档，发布 0.1.0`
+
+**这一版怎么做的**
+
+| 文档 | 写什么 | 给谁看 |
+| --- | --- | --- |
+| `README.md` | 一句话定位、安装、快速开始、图层命名示例、产物布局、文档索引、开发命令 | 第一次点进仓库的人 |
+| `docs/USAGE.md` | 环境要求、三种安装方式、菜单一览、选项表、覆盖表三种改法、增量更新的手改姿势、CI 参数、代码调用、FAQ | 要真用它的人 |
+| `docs/CONTRACT.md` | 契约顶层结构、`document` / `resources` / 节点 / `effects` / 诊断的字段表、诊断码前缀分组、manifest 与报告格式、版本策略 | 要写工具链或排查问题的人 |
+| `docs/ARCHITECTURE.md` | 分层图、数据流图、目录结构、五个关键设计（稳定 ID、增量三趟、语义优先级、跨界面复用、预检 vs 报告）、扩展点、不引第三方库的理由 | 要改这个插件的人 |
+| `docs/LIMITATIONS.md` | 定位限制、解析能力（支持 / 降级）、还原到 uGUI 的差距、工程与流程限制、性能数据、仓库现状 | 踩坑之前的人 |
+| `CHANGELOG.md` | `0.1.0` 按模块分的新增项、测试现状、已知限制摘要 | 升级前想看变化的人 |
+
+写文档时顺手修掉的两处「文档与实现对不上」：
+
+- `PsdDump --json` 在跑导出计划**之前**就写契约，导致 `resources` 是空的，和编辑器产出的那份不一样。
+  现在先跑计划再写，契约终于可信。
+- 图片节点上的图层效果（投影、描边、渐变…）uGUI 表达不了，实现里既不生效也**不报警**——
+  这违反了本项目自己定的「做不到也要说」。现在会报 `effect.not-applied`：
+  在真实设计稿上跑了 8 条。
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 文档里写的字段名和代码对不上 | 手写字段表容易想当然 | 每张表都拿真实产物（`--json` / `--report`）或 `rg` 回查一遍；`manifest` 里的 `border` 是字符串不是对象，就是回查时才发现的 |
+| `PsdDump --json` 的 `resources` 空着，编辑器产的却不空 | 契约写盘早于导出计划 | 把 `Plan()` 提到写契约之前 |
+| 图片节点上的图层效果静默消失 | `ApplyTextEffects` 只挂到文本节点上，其它分支没人管 | 补 `effect.not-applied` 诊断，宁可吵也别不吭声 |
+| `dev-project.sh` 里中文提示跟在变量后面就报 `unbound variable` | bash 把全角标点算进了变量名 | 中文提示里的变量一律写 `${VAR}`（Step 11 已记，这里再确认一遍没漏） |
 
 ---
 
@@ -558,7 +589,7 @@ SKIP_UNITY_TESTS=1 bash Tools~/run-tests.sh                 # CI 里只跑 dotne
 | Step 9 | `feat(editor): 预检与诊断报告` | ✅ |
 | Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ✅ |
 | Step 11 | `test: EditMode 测试与无头验证脚本` | ✅ |
-| Step 12 | `docs: 完善使用与架构文档，发布 0.1.0` | ⬜ |
+| Step 12 | `docs: 完善使用与架构文档，发布 0.1.0` | ✅ |
 
 ---
 

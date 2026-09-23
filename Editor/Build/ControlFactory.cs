@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Psd2Ugui.Core.Build;
 using Psd2Ugui.Core.Contract;
 using UnityEngine;
@@ -91,6 +92,8 @@ namespace Psd2Ugui.Editor.Build
                     break;
             }
 
+            ReportUnappliedEffects(plan, context);
+
             if (plan.Kind == ControlKind.Rect && plan.Children.Count > 0)
             {
                 // 容器自己没颜色可乘，只能用 CanvasGroup 整体压透明度
@@ -172,6 +175,42 @@ namespace Psd2Ugui.Editor.Build
                 var rectMask = GetOrAdd<RectMask2D>(target);
                 rectMask.enabled = true;
             }
+        }
+
+        /// <summary>
+        /// 图片节点上的图层效果 uGUI 表达不了（投影、描边、渐变都算），这里明说一句。
+        /// 不吭声的话用户只会觉得「效果怎么没了」，而这个插件承诺的是「做不到也要说」。
+        /// </summary>
+        private static void ReportUnappliedEffects(PlanNode plan, PrefabBuildContext context)
+        {
+            if (plan.Effects == null || plan.Effects.Count == 0)
+            {
+                return;
+            }
+
+            if (plan.Kind == ControlKind.Text || plan.Kind == ControlKind.TmpText)
+            {
+                // 文本有自己的通道（Outline / Shadow / TMP 渐变），交给 ApplyTextEffects 处理
+                return;
+            }
+
+            var kinds = new List<string>();
+            for (int i = 0; i < plan.Effects.Count; i++)
+            {
+                UiEffect effect = plan.Effects[i];
+                if (effect.Enabled && !kinds.Contains(effect.Kind))
+                {
+                    kinds.Add(effect.Kind);
+                }
+            }
+
+            if (kinds.Count == 0)
+            {
+                return;
+            }
+
+            context.Report(DiagnosticSeverity.Info, "effect.not-applied",
+                "图层效果没法用 uGUI 表达，已忽略：" + plan.Name + "（" + string.Join("、", kinds.ToArray()) + "）");
         }
 
         private static void AddRawImage(PlanNode plan, GameObject target, PrefabBuildContext context)

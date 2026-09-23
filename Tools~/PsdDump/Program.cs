@@ -178,6 +178,9 @@ namespace Psd2Ugui.Tools
 
             if (!string.IsNullOrEmpty(jsonPath))
             {
+                // 先跑计划再写契约：资源清单是 ExportPlanner 填进 document.Resources 的，
+                // 不先跑一遍的话导出的契约里 resources 是空的，跟编辑器产出的那份对不上。
+                Plan();
                 File.WriteAllText(jsonPath, ContractJson.ToJsonText(document), new UTF8Encoding(false));
                 Console.WriteLine();
                 Console.WriteLine("已输出契约: " + jsonPath);
