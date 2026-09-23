@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Psd2Ugui.Core.Contract;
+using Psd2Ugui.Core.Imaging;
 using Psd2Ugui.Core.Json;
+
 
 using Psd2Ugui.Core.Psd;
 
@@ -28,6 +30,8 @@ namespace Psd2Ugui.Tools
             string path = args[0];
             string jsonPath = null;
             string layersPath = null;
+            string pixelsPath = null;
+            string compositePath = null;
             for (int i = 1; i < args.Length - 1; i++)
             {
                 if (args[i] == "--json")
@@ -38,7 +42,16 @@ namespace Psd2Ugui.Tools
                 {
                     layersPath = args[i + 1];
                 }
+                else if (args[i] == "--pixels")
+                {
+                    pixelsPath = args[i + 1];
+                }
+                else if (args[i] == "--composite")
+                {
+                    compositePath = args[i + 1];
+                }
             }
+
 
 
             if (!File.Exists(path))
@@ -91,8 +104,74 @@ namespace Psd2Ugui.Tools
                 Console.WriteLine("已输出图层明细: " + layersPath);
             }
 
+            if (!string.IsNullOrEmpty(pixelsPath))
+            {
+                Console.WriteLine();
+                Console.WriteLine("已输出图层像素: " + DumpPixels(file, pixelsPath) + " 个 -> " + pixelsPath);
+            }
+
+            if (!string.IsNullOrEmpty(compositePath))
+            {
+                Bitmap canvas = LayerRasterizer.Composite(file, null, file.Warnings);
+                if (canvas == null)
+                {
+                    Console.Error.WriteLine("合成失败：画布尺寸非法");
+                    return 3;
+                }
+
+                File.WriteAllBytes(compositePath, canvas.Pixels);
+                Console.WriteLine("已输出合成图: " + compositePath + " (" + canvas.Width + "x" + canvas.Height + ")");
+            }
+
             return 0;
         }
+
+        /// <summary>
+        /// 把每个图层栅格化成裸 RGBA 字节（每像素 4 字节，行优先），
+        /// 文件名用图层 ID，配合 Tools~/psd-tools-verify/dump_pixels.py 做逐像素对照。
+        /// </summary>
+        private static int DumpPixels(PsdFile file, string directory)
+        {
+            Directory.CreateDirectory(directory);
+            var warnings = new List<string>();
+            JsonValue layers = JsonValue.Array();
+            int written = 0;
+            foreach (PsdLayer layer in file.AllLayers())
+            {
+                if (layer.IsGroup || layer.IsBoundingDivider)
+                {
+                    continue;
+                }
+
+                Bitmap bitmap = LayerRasterizer.Rasterize(file, layer, warnings);
+                if (bitmap == null || bitmap.IsEmpty)
+                {
+                    continue;
+                }
+
+                File.WriteAllBytes(Path.Combine(directory, layer.LayerId + ".rgba"), bitmap.Pixels);
+                layers.Add(JsonValue.Object()
+                    .Set("id", JsonValue.Number(layer.LayerId))
+                    .Set("name", JsonValue.String(layer.DisplayName))
+                    .Set("x", JsonValue.Number(layer.Rect.X))
+                    .Set("y", JsonValue.Number(layer.Rect.Y))
+                    .Set("width", JsonValue.Number(bitmap.Width))
+                    .Set("height", JsonValue.Number(bitmap.Height))
+                    .Set("opacity", JsonValue.Number(layer.Opacity))
+                    .Set("visible", JsonValue.Bool(layer.Visible)));
+                written++;
+            }
+
+            JsonValue index = JsonValue.Object()
+                .Set("document", JsonValue.Object()
+                    .Set("width", JsonValue.Number(file.Width))
+                    .Set("height", JsonValue.Number(file.Height)))
+                .Set("layers", layers);
+            File.WriteAllText(Path.Combine(directory, "index.json"), index.ToJsonString(true), new UTF8Encoding(false));
+            return written;
+
+        }
+
 
         /// <summary>
         /// 输出图层明细，字段与 Tools~/psd-tools-verify/dump_reference.py 一一对应，
