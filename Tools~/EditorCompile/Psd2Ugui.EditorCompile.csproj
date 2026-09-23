@@ -39,6 +39,9 @@
 
   <ItemGroup>
     <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
+    <!-- Runtime 根目录下的运行时组件（Psd2UguiNode）。Unity 里它们各属独立程序集，
+         这里合并成一个程序集只是为了在不开编辑器时做编译检查。 -->
+    <Compile Include="../../Runtime/*.cs" LinkBase="RuntimeSource" />
     <Compile Include="../../Editor/**/*.cs" LinkBase="EditorSource" />
   </ItemGroup>
 

@@ -46,14 +46,17 @@
 ```text
 Psd2UGUI/                          # UPM 包
 ├─ package.json
+├─ Runtime/Psd2UguiNode.cs         # 生成节点的标记组件（记录来源图层，增量更新靠它认领）
 ├─ Runtime/Core/                   # 纯 C#，零 UnityEngine 依赖（可 dotnet 测试）
 │  ├─ Contract/                    # 中间契约：文档、节点、资源、诊断、JSON 写出
 │  ├─ Psd/                         # PSD 二进制解析器（PSD/PSB、RLE/ZIP）
 │  ├─ Imaging/                     # 位图、裁剪/去空、PNG 编码、九宫检测
 │  ├─ Semantics/                   # 标签解析、类型推断、角色分配、覆盖表、节点树构建
-│  └─ Pipeline/                    # 编排、选项、预检
+│  ├─ Pipeline/                    # 编排、选项、预检
+│  └─ Build/                       # 预制体装配计划（控件映射、布局换算，可 dotnet 测试）
 ├─ Editor/                         # Unity Editor 侧
 │  ├─ Import/                      # 读取 PSD、Sprite 落盘、导入设置、资源复用
+│  ├─ Tmp/                          # 可选：TMP 文本后端（defineConstraints 控制是否参与编译）
 │  ├─ Build/                       # Prefab 装配、控件工厂、角色连线、TMP 效果、增量更新
 │  ├─ Reports/                     # 导出报告
 │  └─ Ui/                          # 编辑器窗口、节点树视图、菜单、批处理入口
@@ -82,8 +85,10 @@ Assets/PSD2UGUI/
 
 | 程序集 | 依赖 | 说明 |
 | --- | --- | --- |
-| `Psd2Ugui.Core` | 无 | 解析、契约、位图、PNG、语义推断，纯 C# |
-| `Psd2Ugui.Editor` | Core、UnityEditor、UGUI；TMP 用 versionDefines 可选 | 资源导出与 Prefab 装配 |
+| `Psd2Ugui.Core` | 无 | 解析、契约、位图、PNG、语义推断、装配计划，纯 C# |
+| `Psd2Ugui.Runtime` | UnityEngine | 生成节点的标记组件 `Psd2UguiNode`，必须能进玩家包 |
+| `Psd2Ugui.Editor` | Core、Runtime、UnityEditor、UGUI | 资源导出与 Prefab 装配 |
+| `Psd2Ugui.Editor.Tmp` | Editor、Unity.TextMeshPro | 可选：装了 TMP 才编译（`defineConstraints: PSD2UGUI_TMP`） |
 | `Psd2Ugui.Tests.EditMode` | 上述两者、NUnit | EditMode 测试 |
 
 **关键决策**
@@ -248,13 +253,37 @@ Assets/PSD2UGUI/
 
 ### Step 7 · Prefab 装配（Editor）
 
-- [ ] `RectTransform` 布局：PSD 像素 → 左上锚点布局，根节点画布尺寸、可选居中/适配
-- [ ] 控件工厂：Image、RawImage、Text、TMP Text、Button、Toggle、InputField、Slider、ScrollView、Dropdown、Panel、Mask、纯色
-- [ ] 角色连线：`targetGraphic`、`fillRect`、`handleRect`、`viewport`、`content`、`placeholder`、状态图切换
-- [ ] 文本样式：字号/颜色/对齐/字体路由；描边、阴影、渐变（TMP 材质实例化并落盘；UGUI Text 用组件实现）
-- [ ] 生成 `Psd2UguiNode` 标记组件（记录稳定 ID 与来源图层）
+- [x] `PrefabPlanner`：契约节点树 → 装配计划（控件种类、相对矩形、槽位、被吸收的图层），纯 Core 可测试
+- [x] `RectTransform` 布局：PSD 像素 → 左上锚点（anchor/pivot 0,1 + 负 Y 偏移），模板节点用拉伸锚点
+- [x] 控件工厂：Image、RawImage、Text、TMP Text、FillColor、Button、Toggle、Slider、Scrollbar、ScrollView、Dropdown、InputField、Panel、Mask
+- [x] 角色连线：`targetGraphic`、`graphic`（勾选图）、`fillRect`、`handleRect`、`viewport`、`content`、`captionText`、`itemText`、`textComponent`、`placeholder`、滚动条
+- [x] 按钮四态（悬停/按下/选中/禁用）吸收成 `spriteState`，不生成多余对象
+- [x] 文本样式：字号/颜色/对齐/字体路由（按 PSD 字体名找工程字体，找不到给诊断）
+- [x] 文本效果：描边/外发光 → `Outline`，投影 → `Shadow`，渐变 → TMP 顶点渐变（uGUI Text 给诊断）
+- [x] `Psd2UguiNode` 标记组件（稳定 ID、图层路径、图层 ID、角色、来源 PSD）
+- [x] 根节点可选 Canvas + CanvasScaler（参考分辨率取 PSD 画布）+ GraphicRaycaster
+- [x] `PsdDump --prefab-plan out.json`：命令行核对映射结果，不开 Unity 也能看
 - **验收**：EditMode 测试断言层级、组件、关键属性与九宫 Border 正确
+- **验收结果**：`dotnet test` 291 项全绿（装配计划 20 项：类型映射、相对坐标、四态吸收、
+  视口/内容重挂、下拉模板复用、TMP 改 Text、未跑导出时的提示等）；
+  Editor 脚本 0 错误 0 警告通过 netstandard2.1 + Unity 2022.3 DLL 编译（含 TMP 后端）；
+  真实样本 `Psd2UguiForm.psd` 生成 57 节点计划：`Button=2 Dropdown=1 FillColor=6 Image=14
+  InputField=1 Panel=1 Rect=8 ScrollView=2 Scrollbar=2 Slider=1 Text=2 TmpText=15 Toggle=2`，
+  0 Error / 3 Warning（设计稿本身没有滑块图层，滚动条与滑条退化成整条可拖），
+  按钮拿到 `targetGraphic=ButtonBule`，下拉框复用设计稿里的列表结构并把列表项移进 Content
 - **提交**：`feat(editor): uGUI Prefab 装配与文本效果`
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| Editor 代码报 `BuildOptions` 引用不明确 | UnityEditor 里也有个 `BuildOptions`（构建参数枚举），和我们的同名 | 用 `using BuildOptions = Psd2Ugui.Core.Build.BuildOptions;` 别名固定语义（编译检查提前抓到的） |
+| 按钮的底图被「抬」到根节点会改变设计稿几何 | 一开始想让按钮根节点自己带底图，但根节点尺寸与图层尺寸未必一致 | 底图留在原层级，只把 `targetGraphic` 指向它；uGUI 的点击判定按 Graphic 冒泡，照样点得到 |
+| 按钮的多出四个可见图层 | 四态图层也当普通子节点生成了 | 四态只作为 `spriteState` 的贴图来源，吸收进组件、不生成对象，并记进 `ConsumedNodeIds` |
+| 下拉框出现「设计稿列表 + 组件列表」两份 | uGUI Dropdown 必须有 Template，于是无条件自造了一套 | 设计稿里已有列表 + 列表项时优先复用：Template 指向设计稿的列表，列表项重挂到 Content 下并改写成局部坐标 |
+| `DropDown`/`InputField` 的文字类型对不上 | uGUI 的 Dropdown / InputField 只认老 `Text` 组件 | 在计划层就把这两处的 TMP 图层改成 `Text`，而不是在 Editor 侧偷偷换组件（有诊断说明） |
+| 组件挂着空 `handleRect`，拖动没反馈 | 设计稿常常没画滑块图层 | `Slider`/`Scrollbar` 的 handleRect 退化成自身矩形，并给提示 |
+| `GetComponent<T>() ?? AddComponent<T>()` 有隐患 | `??` 走的是 CLR 空判断，绕过 Unity 重载的 `==`（已销毁对象是「假空」） | 一律写成 `if (x == null) x = ...` |
 
 ### Step 8 · 增量更新与资源复用
 
@@ -329,7 +358,7 @@ Assets/PSD2UGUI/
 | Step 4 | `feat(core): 图层语义标签与控件类型推断` | ✅ |
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ✅ |
 | Step 6 | `feat(editor): Sprite 导出与导入设置` | ✅ |
-| Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ⬜ |
+| Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ✅ |
 | Step 8 | `feat(editor): 增量更新与资源复用` | ⬜ |
 | Step 9 | `feat(editor): 预检与诊断报告` | ⬜ |
 | Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ⬜ |

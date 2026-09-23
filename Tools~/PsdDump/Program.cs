@@ -5,6 +5,7 @@ using System.Text;
 using Psd2Ugui.Core.Contract;
 using Psd2Ugui.Core.Imaging;
 using Psd2Ugui.Core.Json;
+using Psd2Ugui.Core.Build;
 using Psd2Ugui.Core.Pipeline;
 using Psd2Ugui.Core.Semantics;
 using Psd2Ugui.Core.Psd;
@@ -25,7 +26,7 @@ namespace Psd2Ugui.Tools
             {
                 Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
                 Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
-                Console.WriteLine("      [--export-dir dir] [--module name] [--no-nine-slice]");
+                Console.WriteLine("      [--export-dir dir] [--module name] [--no-nine-slice] [--prefab-plan out.json]");
                 return 2;
             }
 
@@ -37,6 +38,8 @@ namespace Psd2Ugui.Tools
             string overridesPath = null;
             string spritesPath = null;
             string exportDir = null;
+            string prefabPlanPath = null;
+            ExportOptions exportOptions = new ExportOptions();
             string module = null;
             bool noNineSlice = false;
             bool showNodes = false;
@@ -77,10 +80,16 @@ namespace Psd2Ugui.Tools
                 else if (args[i] == "--module")
                 {
                     module = Next(args, ref i);
+                    exportOptions.Module = module;
                 }
                 else if (args[i] == "--no-nine-slice")
                 {
                     noNineSlice = true;
+                    exportOptions.DetectNineSlice = false;
+                }
+                else if (args[i] == "--prefab-plan")
+                {
+                    prefabPlanPath = Next(args, ref i);
                 }
             }
 
@@ -161,6 +170,12 @@ namespace Psd2Ugui.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine(Export(file, document, exportDir, module, !noNineSlice));
+            }
+
+            if (!string.IsNullOrEmpty(prefabPlanPath))
+            {
+                Console.WriteLine();
+                Console.WriteLine(DumpPrefabPlan(file, document, prefabPlanPath, exportOptions));
             }
 
             if (!string.IsNullOrEmpty(compositePath))
@@ -360,6 +375,125 @@ namespace Psd2Ugui.Tools
         /// 把 Image / RawImage 节点导成 PNG，并附上九宫检测结果。
         /// 图集之外的处理（导入设置、资源复用）在 Unity 侧的 Step 6 完成，这里只负责像素与九宫。
         /// </summary>
+        /// <summary>
+        /// 走一遍预制体装配计划（不碰 Unity）：把「每个节点变成什么控件、连了哪些子件」写出来，
+        /// 便于在没有 Unity 的环境里核对映射规则。
+        /// </summary>
+        private static string DumpPrefabPlan(PsdFile file, UiDocument document, string outPath, ExportOptions options)
+        {
+            // 装配计划依赖导出计划给出的「节点 → 贴图」绑定，先跑一遍
+            ExportPlanner.Build(file, document, options == null ? null : options);
+            PlanNode plan = PrefabPlanner.Build(document);
+            if (plan == null)
+            {
+                return "预制体计划: 空文档";
+            }
+
+            File.WriteAllText(outPath, PlanJson(plan).ToJsonString(true), new UTF8Encoding(false));
+            var kinds = new SortedDictionary<string, int>();
+            foreach (PlanNode node in plan.SelfAndDescendants())
+            {
+                int count;
+                kinds.TryGetValue(node.Kind.ToString(), out count);
+                kinds[node.Kind.ToString()] = count + 1;
+            }
+
+            var builder = new StringBuilder();
+            builder.Append("预制体计划: ").Append(document.Stats["prefabNodes"]).Append(" 个节点");
+            builder.Append("，被吸收 ").Append(document.Stats["prefabConsumed"]).Append(" 个");
+            builder.Append(" -> ").Append(outPath).Append("\n  控件分布: ");
+            foreach (KeyValuePair<string, int> pair in kinds)
+            {
+                builder.Append(pair.Key).Append('=').Append(pair.Value).Append(' ');
+            }
+
+            builder.Append("\n  装配诊断: ").Append(document.Diagnostics.Count)
+                .Append(" (E").Append(document.CountSeverity(DiagnosticSeverity.Error))
+                .Append("/W").Append(document.CountSeverity(DiagnosticSeverity.Warning))
+                .Append("/I").Append(document.CountSeverity(DiagnosticSeverity.Info)).Append(')');
+            int shown = 0;
+            int hidden = 0;
+            for (int i = 0; i < document.Diagnostics.Count; i++)
+            {
+                UiDiagnostic diagnostic = document.Diagnostics[i];
+                if (!diagnostic.Code.StartsWith("prefab."))
+                {
+                    continue;
+                }
+
+                if (diagnostic.Severity == DiagnosticSeverity.Info && shown >= 5)
+                {
+                    hidden++;
+                    continue;
+                }
+
+                builder.Append("\n    ").Append(diagnostic);
+                shown++;
+            }
+
+            if (hidden > 0)
+            {
+                builder.Append("\n    … 另有 ").Append(hidden).Append(" 条提示（同上）");
+            }
+
+            return builder.ToString();
+        }
+
+        private static JsonValue PlanJson(PlanNode plan)
+        {
+            JsonValue node = JsonValue.Object()
+                .Set("name", JsonValue.String(plan.Name))
+                .Set("kind", JsonValue.String(plan.Kind.ToString()))
+                .Set("role", JsonValue.String(plan.Role))
+                .Set("rect", JsonValue.Object()
+                    .Set("x", JsonValue.Number(plan.Rect.X))
+                    .Set("y", JsonValue.Number(plan.Rect.Y))
+                    .Set("width", JsonValue.Number(plan.Rect.Width))
+                    .Set("height", JsonValue.Number(plan.Rect.Height)))
+                .Set("active", JsonValue.Bool(plan.Active));
+
+            if (!string.IsNullOrEmpty(plan.SpriteId))
+            {
+                node.Set("sprite", JsonValue.String(plan.SpriteFile));
+            }
+
+            if (plan.Border != null && !plan.Border.IsZero)
+            {
+                node.Set("border", JsonValue.String(plan.Border.ToString()));
+            }
+
+            if (plan.Slots.Count > 0)
+            {
+                var slots = new List<string>(plan.Slots.Keys);
+                slots.Sort(StringComparer.Ordinal);
+                JsonValue slotValue = JsonValue.Object();
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    slotValue.Set(slots[i], JsonValue.String(plan.Slots[slots[i]].Name));
+                }
+
+                node.Set("slots", slotValue);
+            }
+
+            if (plan.State != null && !plan.State.IsEmpty)
+            {
+                node.Set("state", JsonValue.Object()
+                    .Set("highlighted", JsonValue.String(plan.State.HighlightedFile ?? string.Empty))
+                    .Set("pressed", JsonValue.String(plan.State.PressedFile ?? string.Empty))
+                    .Set("selected", JsonValue.String(plan.State.SelectedFile ?? string.Empty))
+                    .Set("disabled", JsonValue.String(plan.State.DisabledFile ?? string.Empty)));
+            }
+
+            JsonValue children = JsonValue.Array();
+            for (int i = 0; i < plan.Children.Count; i++)
+            {
+                children.Add(PlanJson(plan.Children[i]));
+            }
+
+            node.Set("children", children);
+            return node;
+        }
+
         /// <summary>
         /// 按真实导出计划落盘：`sprite/&lt;模块&gt;/xxx.png` + `contract/&lt;模块&gt;/&lt;源文件&gt;.json`。
         /// 这是 Unity 侧 SpriteExporter 的无 Unity 版本，用来在命令行端到端验证「解析 → 计划 → PNG」。

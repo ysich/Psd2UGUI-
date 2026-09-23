@@ -1,9 +1,10 @@
 {
-  "name": "Psd2Ugui.Editor",
-  "rootNamespace": "Psd2Ugui.Editor",
+  "name": "Psd2Ugui.Editor.Tmp",
+  "rootNamespace": "Psd2Ugui.Editor.Tmp",
   "references": [
     "Psd2Ugui.Core",
-    "Psd2Ugui.Runtime"
+    "Psd2Ugui.Editor",
+    "Unity.TextMeshPro"
   ],
   "includePlatforms": [
     "Editor"
@@ -13,13 +14,9 @@
   "overrideReferences": false,
   "precompiledReferences": [],
   "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [
-    {
-      "name": "com.unity.textmeshpro",
-      "expression": "",
-      "define": "PSD2UGUI_TMP"
-    }
+  "defineConstraints": [
+    "PSD2UGUI_TMP"
   ],
+  "versionDefines": [],
   "noEngineReferences": false
 }
