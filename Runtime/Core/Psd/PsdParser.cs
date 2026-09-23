@@ -291,6 +291,8 @@ namespace Psd2Ugui.Core.Psd
 
             }
 
+            AssignFallbackLayerIds(layers, file);
+
             // 通道数据紧随图层记录，按记录顺序依次排列
             for (int i = 0; i < layers.Count; i++)
             {
@@ -313,6 +315,43 @@ namespace Psd2Ugui.Core.Psd
             }
 
             file.Layers = layers;
+        }
+
+        /// <summary>
+        /// 旧 PSD（或 Photoshop 没写 lyid 的记录）里所有图层的 LayerId 都是 -1，
+        /// 直接拿它当身份用会互相撞在一起（查图层永远只查到第一个）。
+        /// 这里给缺失的图层按记录顺序补一个不小于任何真实 lyid 的合成编号，保证全局唯一。
+        /// </summary>
+        private static void AssignFallbackLayerIds(List<PsdLayer> layers, PsdFile file)
+        {
+            int next = 0;
+            int missing = 0;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                if (layers[i].LayerId >= 0)
+                {
+                    next = Math.Max(next, layers[i].LayerId + 1);
+                }
+                else
+                {
+                    missing++;
+                }
+            }
+
+            if (missing == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < layers.Count; i++)
+            {
+                if (layers[i].LayerId < 0)
+                {
+                    layers[i].LayerId = next++;
+                }
+            }
+
+            file.Warnings.Add(missing + " 个图层没有 lyid，已按记录顺序补上合成编号");
         }
 
         private static PsdLayer ReadLayerRecord(PsdBinaryReader reader, PsdFile file)

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    脱离 Unity 的「编辑器脚本编译检查」。
+    Unity 2022.3 的脚本运行时是 .NET Standard 2.1，这里用同一个目标框架，
+    直接引用 Unity 自带的托管 DLL，把 Runtime/Core + Editor 一起编译一遍。
+    作用是在不开编辑器的情况下，提前发现 Editor 代码里的语法 / API 错误。
+
+    用法：
+      dotnet build "Tools~/EditorCompile/Psd2Ugui.EditorCompile.csproj"
+    换 Unity 版本或换机器时用属性覆盖：
+      -p:UnityManagedDir=/path/to/Unity.app/Contents/Managed
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Psd2Ugui.Editor.CompileCheck</AssemblyName>
+    <RootNamespace>Psd2Ugui</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NU1701;NU1702;MSB3277;MSB3243;CS1701;CS1702</NoWarn>
+    <UnityManagedDir Condition="'$(UnityManagedDir)' == ''">/Applications/Unity/Unity.app/Contents/Managed</UnityManagedDir>
+    <UnityPackageCacheDir Condition="'$(UnityPackageCacheDir)' == ''">/Applications/Unity/Unity.app/Contents/Resources/PackageManager/ProjectTemplates/libcache</UnityPackageCacheDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- UnityEngine.dll / UnityEditor.dll 是门面程序集，具体类型分散在各 Module 里，
+         所以整个目录一起引用；UGUI / TMP 属于包，DLL 在包模板的缓存目录里。 -->
+    <Reference Include="$(UnityManagedDir)/UnityEngine.dll" Private="false" />
+    <Reference Include="$(UnityManagedDir)/UnityEditor.dll" Private="false" />
+    <Reference Include="$(UnityManagedDir)/UnityEngine/*.dll" Private="false" />
+    <Reference Include="$(UnityPackageCacheDir)/com.unity.template.2d-7.0.4/ScriptAssemblies/UnityEngine.UI.dll" Private="false" />
+    <Reference Include="$(UnityPackageCacheDir)/com.unity.template.2d-7.0.4/ScriptAssemblies/Unity.TextMeshPro.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
+    <Compile Include="../../Editor/**/*.cs" LinkBase="EditorSource" />
+  </ItemGroup>
+
+</Project>

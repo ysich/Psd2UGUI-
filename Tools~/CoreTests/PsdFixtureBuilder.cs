@@ -74,21 +74,33 @@ namespace Psd2Ugui.CoreTests
 
         public bool OmitCompositeHeader;
 
+        /// <summary>
+        /// 新图层自动带上 lyid（Photoshop 的真实行为）。
+        /// 置 false 可以构造“没有图层编号”的老文件，用来验证解析器的兜底逻辑。
+        /// </summary>
+        public bool AutoLayerIds = true;
+
+        private int _nextLayerId = 1;
+
         public readonly List<KeyValuePair<int, byte[]>> Resources = new List<KeyValuePair<int, byte[]>>();
         public readonly List<LayerSpec> Layers = new List<LayerSpec>();
         public readonly List<KeyValuePair<string, byte[]>> DocumentBlocks = new List<KeyValuePair<string, byte[]>>();
 
         public LayerSpec AddLayer(LayerSpec layer)
         {
+            if (AutoLayerIds && layer != null)
+            {
+                layer.WithTag("lyid", Desc.I32(_nextLayerId));
+            }
+
+            _nextLayerId++;
             Layers.Add(layer);
             return layer;
         }
 
         public LayerSpec AddLayer(string name)
         {
-            var layer = new LayerSpec { Name = name };
-            Layers.Add(layer);
-            return layer;
+            return AddLayer(new LayerSpec { Name = name });
         }
 
         public byte[] Build()

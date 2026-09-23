@@ -5,9 +5,8 @@ using System.Text;
 using Psd2Ugui.Core.Contract;
 using Psd2Ugui.Core.Imaging;
 using Psd2Ugui.Core.Json;
+using Psd2Ugui.Core.Pipeline;
 using Psd2Ugui.Core.Semantics;
-
-
 using Psd2Ugui.Core.Psd;
 
 namespace Psd2Ugui.Tools
@@ -25,7 +24,8 @@ namespace Psd2Ugui.Tools
             if (args.Length == 0)
             {
                 Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
-            Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
+                Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
+                Console.WriteLine("      [--export-dir dir] [--module name] [--no-nine-slice]");
                 return 2;
             }
 
@@ -36,6 +36,9 @@ namespace Psd2Ugui.Tools
             string compositePath = null;
             string overridesPath = null;
             string spritesPath = null;
+            string exportDir = null;
+            string module = null;
+            bool noNineSlice = false;
             bool showNodes = false;
             for (int i = 1; i < args.Length; i++)
             {
@@ -66,6 +69,18 @@ namespace Psd2Ugui.Tools
                 else if (args[i] == "--nodes")
                 {
                     showNodes = true;
+                }
+                else if (args[i] == "--export-dir")
+                {
+                    exportDir = Next(args, ref i);
+                }
+                else if (args[i] == "--module")
+                {
+                    module = Next(args, ref i);
+                }
+                else if (args[i] == "--no-nine-slice")
+                {
+                    noNineSlice = true;
                 }
             }
 
@@ -140,6 +155,12 @@ namespace Psd2Ugui.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine("已输出 Sprite: " + DumpSprites(file, document, spritesPath) + " 个 -> " + spritesPath);
+            }
+
+            if (!string.IsNullOrEmpty(exportDir))
+            {
+                Console.WriteLine();
+                Console.WriteLine(Export(file, document, exportDir, module, !noNineSlice));
             }
 
             if (!string.IsNullOrEmpty(compositePath))
@@ -339,6 +360,43 @@ namespace Psd2Ugui.Tools
         /// 把 Image / RawImage 节点导成 PNG，并附上九宫检测结果。
         /// 图集之外的处理（导入设置、资源复用）在 Unity 侧的 Step 6 完成，这里只负责像素与九宫。
         /// </summary>
+        /// <summary>
+        /// 按真实导出计划落盘：`sprite/&lt;模块&gt;/xxx.png` + `contract/&lt;模块&gt;/&lt;源文件&gt;.json`。
+        /// 这是 Unity 侧 SpriteExporter 的无 Unity 版本，用来在命令行端到端验证「解析 → 计划 → PNG」。
+        /// </summary>
+        private static string Export(PsdFile file, UiDocument document, string directory, string module,
+            bool nineSlice)
+        {
+            var options = new ExportOptions { DetectNineSlice = nineSlice };
+            if (!string.IsNullOrEmpty(module))
+            {
+                options.Module = module;
+            }
+
+            ExportPlan plan = ExportPlanner.Build(file, document, options);
+            string spriteDir = Path.Combine(directory, "sprite", plan.Module);
+            Directory.CreateDirectory(spriteDir);
+
+            long bytes = 0;
+            for (int i = 0; i < plan.Sprites.Count; i++)
+            {
+                SpriteExport sprite = plan.Sprites[i];
+                PngEncoder.Write(Path.Combine(spriteDir, sprite.FileName), sprite.Bitmap);
+                bytes += new FileInfo(Path.Combine(spriteDir, sprite.FileName)).Length;
+                Console.WriteLine("  + " + sprite.FileName + "  " + sprite.Bitmap.Width + "x" +
+                                  sprite.Bitmap.Height + "  " + (sprite.IsSliceable ? sprite.Border.ToString() : "-") +
+                                  (sprite.Shared ? "  共用" : string.Empty));
+            }
+
+            string contractDir = Path.Combine(directory, "contract", plan.Module);
+            Directory.CreateDirectory(contractDir);
+            string contractFile = Path.Combine(contractDir, Path.GetFileNameWithoutExtension(file.FileName) + ".json");
+            File.WriteAllText(contractFile, ContractJson.ToJsonText(document), new UTF8Encoding(false));
+
+            return "已导出资源: " + plan.Sprites.Count + " 张（可切 " + plan.SliceableCount + "）-> " + spriteDir +
+                   "\n  共 " + bytes + " 字节；契约: " + contractFile;
+        }
+
         private static int DumpSprites(PsdFile file, UiDocument document, string directory)
         {
             Directory.CreateDirectory(directory);

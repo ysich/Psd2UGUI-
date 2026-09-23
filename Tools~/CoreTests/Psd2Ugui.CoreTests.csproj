@@ -15,6 +15,8 @@
   <ItemGroup>
     <!-- 直接编译 Core 源码：Core 不依赖 UnityEngine，可以脱离 Unity 测试 -->
     <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
+    <!-- 身份映射是纯数据变换（只用 BCL + Core），可以脱离 UnityEditor 一起测 -->
+    <Compile Include="../../Editor/Import/Psd2UguiManifest.cs" LinkBase="EditorSource" />
     <Compile Include="*.cs" />
   </ItemGroup>
 

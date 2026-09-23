@@ -163,6 +163,52 @@ namespace Psd2Ugui.CoreTests
         }
 
         [Fact]
+        public void 图层编号自动带上且唯一()
+        {
+            var builder = new PsdFixtureBuilder();
+            builder.AddLayer("a").WithChannel(0, PsdCompression.Raw, new byte[] { 1 });
+            builder.AddLayer("b").WithChannel(0, PsdCompression.Raw, new byte[] { 2 });
+
+            PsdFile file = PsdParser.Read(builder.Build());
+
+            Assert.Equal(1, file.Layers[0].LayerId);
+            Assert.Equal(2, file.Layers[1].LayerId);
+            Assert.Empty(file.Warnings);
+        }
+
+        [Fact]
+        public void 没有lyid的老文件补上唯一编号()
+        {
+            var builder = new PsdFixtureBuilder { AutoLayerIds = false };
+            builder.AddLayer("a").WithChannel(0, PsdCompression.Raw, new byte[] { 1 });
+            builder.AddLayer("b").WithChannel(0, PsdCompression.Raw, new byte[] { 2 });
+            builder.AddLayer("c").WithChannel(0, PsdCompression.Raw, new byte[] { 3 });
+
+            PsdFile file = PsdParser.Read(builder.Build());
+
+            // 三个图层都不能是 -1，否则按 ID 查图层会永远只查到第一个
+            Assert.Equal(new[] { 0, 1, 2 }, new[] { file.Layers[0].LayerId, file.Layers[1].LayerId, file.Layers[2].LayerId });
+            Assert.Same(file.Layers[1], file.FindLayer(file.Layers[1].LayerId));
+            Assert.Contains(file.Warnings, item => item.Contains("lyid"));
+        }
+
+        [Fact]
+        public void 部分图层没有lyid时补的编号不与真实编号撞车()
+        {
+            var builder = new PsdFixtureBuilder { AutoLayerIds = false };
+            var payload = new List<byte>();
+            PsdFixtureBuilder.WriteI32(payload, 7);
+            builder.AddLayer("a").WithTag("lyid", payload.ToArray())
+                .WithChannel(0, PsdCompression.Raw, new byte[] { 1 });
+            builder.AddLayer("b").WithChannel(0, PsdCompression.Raw, new byte[] { 2 });
+
+            PsdFile file = PsdParser.Read(builder.Build());
+
+            Assert.Equal(7, file.Layers[0].LayerId);
+            Assert.Equal(8, file.Layers[1].LayerId);
+        }
+
+        [Fact]
         public void 分隔符还原出分组层级()
         {
             var builder = new PsdFixtureBuilder();

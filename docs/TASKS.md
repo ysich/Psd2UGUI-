@@ -60,8 +60,22 @@ Psd2UGUI/                          # UPM 包
 ├─ Tests/                          # Unity EditMode 测试（NUnit + asmdef）
 ├─ Tools~/                         # Unity 忽略目录
 │  ├─ CoreTests/                   # dotnet 测试工程（直接编译 Runtime/Core 源码）
+│  ├─ CoreNetStandard/             # 把 Core 按 netstandard2.1 编一遍（Unity 兼容性检查）
+│  ├─ EditorCompile/               # 引用 Unity DLL 编译 Editor 脚本（不开编辑器的语法/API 检查）
+│  ├─ PsdDump/                     # 命令行解析与导出工具
+│  ├─ psd-tools-verify/            # 与 psd-tools / Pillow 交叉校验的脚本
+│  ├─ run-tests.sh                 # 一条命令跑完所有离线检查
 │  └─ dev-project.sh               # 生成宿主工程并无头运行 EditMode 测试
 └─ docs/                           # 任务清单、架构、契约、使用、限制
+```
+
+**导出产物布局（`AssetRoot` 默认 `Assets/PSD2UGUI`）**
+
+```text
+Assets/PSD2UGUI/
+├─ sprite/<模块>/<名字>_<宽>x<高>_<哈希>.png    # 贴图，同模块内按内容共用
+├─ manifest/<模块>/<源文件>.psd2ugui.json       # 资源身份映射（增量更新用）
+└─ contract/<模块>/<源文件>.json                # 契约 JSON（排查用）
 ```
 
 **程序集划分**
@@ -207,12 +221,30 @@ Psd2UGUI/                          # UPM 包
 
 ### Step 6 · 资源导出与导入设置（Editor）
 
-- [ ] `SpriteExporter`：裁剪 → 去空 → 落盘 PNG → `TextureImporter` 配置（Sprite、Pivot、九宫 Border、关 mipmap/压缩策略）
-- [ ] 资源复用注册表：内容哈希 + 稳定 ID → 复用已有资源，避免重复导出
-- [ ] 契约 JSON 与身份映射文件落盘（`.psd2ugui.json` / 身份表）
-- [ ] 路径规划：`Assets/<输出根>/<模块>/<资源名>.png`，重名冲突诊断
+- [x] `ExportPlanner`：栅格化 → 去空 → 九宫检测 → 内容去重 → 绑定资源 ID → 解析 `ref` / `refp`（纯 Core，可脱离 Unity 测试）
+- [x] `SpriteExporter`：落盘 PNG → `TextureImporter` 配置（Sprite、Pivot、九宫 Border、关 mipmap/读写、不压缩、MaxSize 跟着图长）
+- [x] 资源复用：内容哈希 + 九宫 → 同一张图只落一份；内容没变就不重写文件、不改导入设置
+- [x] 身份映射 `.psd2ugui.json`（资源 ID → 文件 / 内容哈希 / 九宫 / 来源图层）与契约 JSON 落盘
+- [x] 路径规划：`Assets/PSD2UGUI/{sprite,manifest,contract}/<模块>/…`，重名冲突与越界目录诊断
+- [x] `Tools~/EditorCompile`：引用 Unity 自带 DLL、用 netstandard2.1 编译 Editor 脚本（不开编辑器也能查语法/API 错误）
+- [x] `Tools~/psd-tools-verify/check_export.py`：独立第三方校验导出目录（Pillow 解码 + 九宫还原逐像素比对）
 - **验收**：导出目录结构符合规划；重复导出不产生重复资源；导入设置断言通过
+- **验收结果**：`dotnet test` 256 项全绿（导出计划 22 项、身份映射 11 项、图层 ID 兜底 3 项）；
+  Editor 脚本 0 错误 0 警告通过 netstandard2.1 + Unity 2022.3 DLL 编译；
+  真实样本 `Psd2UguiForm.psd` 端到端导出 12 张 PNG（6 张九宫、3 张被 `ref` 共用、0 条外部引用），
+  用 Pillow 解码 + 九宫还原与 psd-tools 图层像素**逐像素一致 12/12**、0 问题；
+  同一份 PSD 连导两次，契约 JSON 文本完全一致
 - **提交**：`feat(editor): Sprite 导出与导入设置`
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 两张不同的图被合成了一张 | 夹具里的图层没有 `lyid`，所有图层的 ID 都是 -1，按 ID 查图层永远只查到第一个 | 解析器给缺 `lyid` 的图层补一个不小于任何真实编号的合成 ID（并在警告里说明），夹具默认也带 `lyid`，另留一个不带 `lyid` 的用例守兜底 |
+| 「图一样但九宫不同」的两张资源会撞文件名 | 文件名只用了内容哈希，没算上九宫 | 文件名种子改用 `Key`（内容哈希 + 九宫），两条资源自然分开 |
+| 导出脚本报「还原尺寸不符 (181,51) vs (51,181)」 | 校验脚本里 `np.ix_(xs, ys)` 把行列写反了 | 改成 `np.ix_(ys, xs)`；这类错误正好说明独立校验脚本值得有 |
+| 大图被 Unity 悄悄缩小 | `TextureImporter` 默认 `maxTextureSize=2048`，超过就缩图且不报错 | MaxSize 按图片边长从 2048 逐级翻倍到够用（上限 8192），超 8192 另给警告 |
+| 反复导出把工程拖慢 | 每次导出都重写 PNG 并 `SaveAndReimport` | 内容哈希没变就不写文件；导入设置逐项比对，只有真的不一致才写回重导 |
 
 ### Step 7 · Prefab 装配（Editor）
 
@@ -296,7 +328,7 @@ Psd2UGUI/                          # UPM 包
 
 | Step 4 | `feat(core): 图层语义标签与控件类型推断` | ✅ |
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ✅ |
-| Step 6 | `feat(editor): Sprite 导出与导入设置` | ⬜ |
+| Step 6 | `feat(editor): Sprite 导出与导入设置` | ✅ |
 | Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ⬜ |
 | Step 8 | `feat(editor): 增量更新与资源复用` | ⬜ |
 | Step 9 | `feat(editor): 预检与诊断报告` | ⬜ |
