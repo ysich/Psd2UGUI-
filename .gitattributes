@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.png binary
+*.psd binary
+*.meta text eol=lf
+*.unity text eol=lf
+*.prefab text eol=lf

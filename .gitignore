@@ -1,0 +1,43 @@
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+
+# 开发用宿主工程（由 Tools~/dev-project.sh 生成，不提交）
+DevProject/
+
+# dotnet
+bin/
+TestResults/
+*.trx
+
+# macOS
+.DS_Store
+._*
+
+# 任务运行产物
+Temp/
+Output/
+*.log

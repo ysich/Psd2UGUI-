@@ -1,0 +1,20 @@
+{
+  "name": "com.sicy.psd2ugui",
+  "version": "0.1.0",
+  "displayName": "PSD2UGUI",
+  "description": "在 Unity 里直接解析 PSD 图层树并生成可继续编辑的 uGUI Prefab。自研 PSD 解析器、PNG 编码与契约输出，无第三方依赖。",
+  "unity": "2021.3",
+  "keywords": [
+    "psd",
+    "ugui",
+    "prefab",
+    "ui",
+    "editor"
+  ],
+  "author": {
+    "name": "arvin"
+  },
+  "dependencies": {
+    "com.unity.ugui": "1.0.0"
+  }
+}
