@@ -5,6 +5,7 @@ using Psd2Ugui.Core.Psd;
 using Psd2Ugui.Core.Semantics;
 using Psd2Ugui.Editor.Import;
 using Xunit;
+using Psd2Ugui.Testing;
 
 namespace Psd2Ugui.CoreTests
 {

@@ -17,6 +17,8 @@
     <Compile Include="../../Runtime/Core/**/*.cs" LinkBase="CoreSource" />
     <!-- 身份映射是纯数据变换（只用 BCL + Core），可以脱离 UnityEditor 一起测 -->
     <Compile Include="../../Editor/Import/Psd2UguiManifest.cs" LinkBase="EditorSource" />
+    <!-- PSD 夹具生成器只有一份，dotnet 测试与 Unity EditMode 测试共用 -->
+    <Compile Include="../../Tests/Fixture/PsdFixtureBuilder.cs" LinkBase="TestFixture" />
     <Compile Include="*.cs" />
   </ItemGroup>
 

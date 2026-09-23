@@ -67,7 +67,9 @@ namespace Psd2Ugui.Editor.Import
             Psd2UguiManifest manifest = Psd2UguiManifest.Load(report.ManifestPath);
             CleanObsolete(manifest, plan, options, document, report);
 
+            // manifest 与贴图不在同一层目录，两个都得先建出来，否则第一次导出会写到不存在的路径。
             Psd2UguiPaths.EnsureAssetFolder(spriteDir);
+            Psd2UguiPaths.EnsureAssetFolder(Psd2UguiPaths.ManifestDirectory(options));
 
             var written = new List<SpriteExport>();
             var entries = new List<SpriteExport>();

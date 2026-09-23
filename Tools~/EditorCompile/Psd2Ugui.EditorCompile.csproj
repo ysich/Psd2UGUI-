@@ -6,10 +6,16 @@
     直接引用 Unity 自带的托管 DLL，把 Runtime/Core + Editor 一起编译一遍。
     作用是在不开编辑器的情况下，提前发现 Editor 代码里的语法 / API 错误。
 
+    另外把 Tests/**/*.cs（Unity EditMode 测试）一起编译，这样测试代码也有离线兜底。
+    测试用的 nunit.framework.dll 由 com.unity.test-framework 包提供，安装目录里没有，
+    所以默认挂一份只做 API 形状检查的门面（Shims/NUnitShim.cs）。
+    如果机器上能找到真的 nunit.framework.dll，用 -p:IncludeNUnitShim=false 关掉门面并按需补引用。
+
     用法：
       dotnet build "Tools~/EditorCompile/Psd2Ugui.EditorCompile.csproj"
     换 Unity 版本或换机器时用属性覆盖：
       -p:UnityManagedDir=/path/to/Unity.app/Contents/Managed
+      -p:UnityPackageCacheDir=/path/to/ProjectTemplates/libcache
   -->
 
   <PropertyGroup>
@@ -25,6 +31,9 @@
     <NoWarn>$(NoWarn);NU1701;NU1702;MSB3277;MSB3243;CS1701;CS1702</NoWarn>
     <UnityManagedDir Condition="'$(UnityManagedDir)' == ''">/Applications/Unity/Unity.app/Contents/Managed</UnityManagedDir>
     <UnityPackageCacheDir Condition="'$(UnityPackageCacheDir)' == ''">/Applications/Unity/Unity.app/Contents/Resources/PackageManager/ProjectTemplates/libcache</UnityPackageCacheDir>
+    <UnityTemplateDir Condition="'$(UnityTemplateDir)' == ''">$(UnityPackageCacheDir)/com.unity.template.2d-7.0.4/ScriptAssemblies</UnityTemplateDir>
+    <!-- 没装 com.unity.test-framework 包时就退回门面，保证离线编译检查不因缺依赖而中断。 -->
+    <IncludeNUnitShim Condition="'$(IncludeNUnitShim)' == ''">true</IncludeNUnitShim>
   </PropertyGroup>
 
   <ItemGroup>
@@ -33,8 +42,11 @@
     <Reference Include="$(UnityManagedDir)/UnityEngine.dll" Private="false" />
     <Reference Include="$(UnityManagedDir)/UnityEditor.dll" Private="false" />
     <Reference Include="$(UnityManagedDir)/UnityEngine/*.dll" Private="false" />
-    <Reference Include="$(UnityPackageCacheDir)/com.unity.template.2d-7.0.4/ScriptAssemblies/UnityEngine.UI.dll" Private="false" />
-    <Reference Include="$(UnityPackageCacheDir)/com.unity.template.2d-7.0.4/ScriptAssemblies/Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="$(UnityTemplateDir)/UnityEngine.UI.dll" Private="false" />
+    <Reference Include="$(UnityTemplateDir)/Unity.TextMeshPro.dll" Private="false" />
+    <!-- EditMode 测试要用 UnityEditor.TestTools.LogAssert / [UnityTest] 那一套。 -->
+    <Reference Include="$(UnityTemplateDir)/UnityEngine.TestRunner.dll" Private="false" />
+    <Reference Include="$(UnityTemplateDir)/UnityEditor.TestRunner.dll" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,6 +55,9 @@
          这里合并成一个程序集只是为了在不开编辑器时做编译检查。 -->
     <Compile Include="../../Runtime/*.cs" LinkBase="RuntimeSource" />
     <Compile Include="../../Editor/**/*.cs" LinkBase="EditorSource" />
+    <!-- Unity EditMode 测试与它们的共享夹具（Tests/Fixture 与 dotnet 测试是同一份源码）。 -->
+    <Compile Include="../../Tests/**/*.cs" LinkBase="TestsSource" />
+    <Compile Include="Shims/NUnitShim.cs" Condition="'$(IncludeNUnitShim)' == 'true'" LinkBase="Shims" />
   </ItemGroup>
 
 </Project>

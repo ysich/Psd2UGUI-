@@ -447,12 +447,72 @@ Assets/PSD2UGUI/
 
 ### Step 11 · Unity 测试与无头验证
 
-- [ ] `Tests/` 程序集：解析、语义、导出、装配、增量的 EditMode 测试
-- [ ] 自造 PSD fixture（测试内生成的 PSD 字节流），不依赖外部素材
-- [ ] `Tools~/dev-project.sh`：生成宿主工程、软链接/引用本包、无头运行 EditMode 测试
-- [ ] 真实 PSD 冒烟验证（本地样本，不入库）
+- [x] `Tests/` 程序集：导出、装配、增量、路径约定的 EditMode 测试
+- [x] 自造 PSD fixture（测试内生成的 PSD 字节流），不依赖外部素材
+- [x] `Tools~/dev-project.sh`：生成宿主工程、把本包装进去、无头运行 EditMode 测试
+- [x] 真实 PSD 冒烟验证（本地样本，不入库；用环境变量指过去）
 - **验收**：`Unity -batchmode -runTests -testPlatform EditMode` 全绿
+- **验收结果**：本机 Unity 2022.3.62f3 **真的跑了**：13 个用例 0 失败（其中真实 PSD 冒烟默认跳过，
+  没配样本时是 12 通过 + 1 跳过）；配上样本 `Psd2UguiForm.psd` 后 13/13 全过，
+  冒烟产出「53 节点 / 12 张图 / E0」。`bash Tools~/run-tests.sh` 五项全绿（dotnet 349 + EditMode 13）。
+  **改口说明**：Step 10 曾判断「本机 Unity 起不了无头实例」，这次实测是能起的——
+  当时多半撞上了授权握手抖动，正解是照常 `-batchmode` 跑，只是不能加 `-quit`（见坑表）。
 - **提交**：`test: EditMode 测试与无头验证脚本`
+
+**这一版怎么做的**
+
+| 部件 | 位置 | 职责 |
+| --- | --- | --- |
+| `PsdFixtureBuilder` | `Tests/Fixture/` | 直接拼 PSD 二进制：图层记录、通道数据、`lsct` 分组、图层 ID，不依赖任何外部素材 |
+| `Psd2Ugui.Tests.Editor.asmdef` | `Tests/` | Editor-only 测试程序集；`defineConstraints: UNITY_INCLUDE_TESTS`，靠宿主工程 `testables` 打开 |
+| `Psd2UguiPipelineTests` | `Tests/Editor/` | 端到端：真写 PSD 字节 → 真导出贴图 → 真存预制体 → 真重新导出一遍 |
+| `Psd2UguiPathsTests` | `Tests/Editor/` | 产物路径约定（算错就是「生成了但找不到」） |
+| `Tools~/dev-project.sh` | `Tools~/` | 建宿主工程 → 装包 → 无头跑 EditMode；支持 `--sync` / `--create-only` / `--clean-meta` |
+| `NUnitShim` | `Tools~/EditorCompile/Shims/` | 让「不开编辑器」也能把 `Tests/**` 编译一遍；只补 API 形状，不实现行为 |
+| `run-tests.sh` | `Tools~/` | 5 步：Core 测试 → netstandard2.1 编译 → Editor+Tests 编译 → PsdDump → Unity EditMode |
+
+夹具从 `Tools~/CoreTests/` **搬到了 `Tests/Fixture/`**，dotnet 测试用 `<Compile Include>` 链过去：
+一份源码喂两个测试程序集，Core 侧规则与 Unity 侧行为不会各说各话。
+
+**测试覆盖了什么**
+
+| 用例 | 钉住的行为 |
+| --- | --- |
+| 一键生成产出贴图契约报告与预制体 | 窗口/菜单/批处理共用的那条主流水线端到端可用；节点上挂着 `Psd2UguiNode`；标签决定控件 |
+| 重新导出保留人工改动 | 手工改的颜色、手工加的子节点，重新导出后还在（增量更新的命门） |
+| 设计稿删掉的图层会从预制体里移除 | 增量不是只会加，删掉的图层要真的从 Prefab 里清掉 |
+| 重复导出不会把组件挂两遍 | 幂等：同一份设计稿连导两次，`Image`/`Button` 不会叠 |
+| 共享贴图跨界面复用不重复落盘 | `ref Logo.img` 引用别的界面导过的图，目录里不多出文件，`Image.sprite` 指向共享资产 |
+| 覆盖表写进文件后重新导出就生效 | `overrides/<模块>/<源>.overrides.json` 真的参与解析，`type-source` 变成 `override` |
+| 预检诊断会写进报告 | 重名资源这类问题会进 `.report.json`，不是只在控制台一闪 |
+| 批处理遇到坏路径返回失败个数 | `RunAll` 的失败计数与退出码约定 |
+| 产物必须落在 Assets 下 / 路径约定 / 模块留空 | 路径算错会「生成了但找不到」，这几条锁死 |
+| 真实 PSD 冒烟（可选） | 配 `PSD2UGUI_SMOKE_PSD=<样本.psd>` 时，用真实设计稿跑通全流程且无 Error 级诊断 |
+
+**怎么跑**
+
+```bash
+bash Tools~/run-tests.sh                 # 全部五项（含 Unity EditMode）
+Tools~/dev-project.sh                    # 只跑 Unity 侧
+Tools~/dev-project.sh --sync             # 改完代码只同步包，不重建工程
+PSD2UGUI_SMOKE_PSD=/path/to/xxx.psd Tools~/dev-project.sh   # 带真实 PSD 冒烟
+SKIP_UNITY_TESTS=1 bash Tools~/run-tests.sh                 # CI 里只跑 dotnet
+```
+
+`dev-project.sh` 把包**复制**到宿主工程里，而不是软链回仓库：Unity 会给包内每个资产补 `.meta`，
+软链等于往仓库里灌一堆未跟踪文件；复制过去则让 Unity 去折腾那份副本。
+仓库目前仍然一个 `.meta` 都没入库（既有约定，长期看应该补上，见「已知遗留」）。
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 测试「全部通过」，但一个用例都没跑 | 同时传了 `-quit`：`-runTests` 要靠 `delayCall` 启动，`-quit` 在那之前就把编辑器关了；退出码还是 0 | 去掉 `-quit`；并且**必须**校验 `-testResults` 文件真的落盘，只看退出码会骗人 |
+| 离线编译检查报 `LogAssert` 不存在 | 测试里少一句 `using UnityEngine.TestTools;`——在 Unity 里同样是错的 | 补上；顺带证明「把 `Tests/**` 纳进编译检查」不是白做的 |
+| 第一次导出报 `DirectoryNotFoundException: .../manifest/common/X.psd2ugui.json` | `SpriteExporter` 只建了贴图目录，而 manifest 与贴图不在同一层 | 写盘前把 manifest 目录一起建出来 |
+| `MissingReferenceException: RectTransform has been destroyed` | 把 `LoadPrefabContents` 出来的对象带出了 `UnloadPrefabContents` 作用域 | 测试里只允许在回调内使用（`OnPrefab`）；`Assert.IsNotNull(已销毁对象)` 还会假过 |
+| 脚本报 `code，: unbound variable` | bash 把紧跟 `$VAR` 的全角标点算进了变量名 | 中文提示里的变量一律写 `${VAR}` |
+| 冒烟里诊断比命令行多一大截（W39/I28 vs W2/I14） | 命令行不知道工程里有哪些字体、也没装 TMP | 属于预期：`preflight.font-missing` ×21、`text.tmp-unavailable` ×13 正是「降级并被报出来」；冒烟用例会打一张诊断分布表 |
 
 ### Step 12 · 文档与收尾
 
@@ -476,7 +536,7 @@ Assets/PSD2UGUI/
 
 | 风险 | 影响 | 对策 |
 | --- | --- | --- |
-| Unity 无可用授权导致无头测试失败 | 无法自动验收 | 先跑 dotnet 测试保证 Core 正确；Unity 侧退化为「编译 + 手动验证说明」，并在交付说明中如实标注 |
+| Unity 无可用授权导致无头测试失败 | 无法自动验收 | 先跑 dotnet 测试保证 Core 正确；`Tools~/dev-project.sh` 把「环境不满足」与「用例失败」分成退出码 3 与 2，前者不阻塞整条流水线 |
 | PSD 特性覆盖不全（16bit、CMYK、智能对象、矢量蒙版、图层组混合模式） | 还原偏差 | 分级支持：能解析的正确解析，不能解析的产出诊断而不是静默错误 |
 | TMP 未安装或未导入 Essentials | 文本效果缺失 | asmdef `versionDefines` 条件编译 + 运行时检测，降级到 UGUI Text 并给诊断 |
 | 增量更新误删用户改动 | 用户资产受损 | 节点归属标记 + 身份映射 + 只管理自己产物；破坏性操作前备份到临时目录 |
@@ -490,7 +550,6 @@ Assets/PSD2UGUI/
 | Step 1 | `feat(core): 契约数据模型与 JSON 写出` | ✅ |
 | Step 2 | `feat(core): 自研 PSD 二进制解析器` | ✅ |
 | Step 3 | `feat(core): 图层树构建与位图合成` | ✅ |
-
 | Step 4 | `feat(core): 图层语义标签与控件类型推断` | ✅ |
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ✅ |
 | Step 6 | `feat(editor): Sprite 导出与导入设置` | ✅ |
@@ -498,5 +557,16 @@ Assets/PSD2UGUI/
 | Step 8 | `feat(editor): 增量更新与资源复用` | ✅ |
 | Step 9 | `feat(editor): 预检与诊断报告` | ✅ |
 | Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ✅ |
-| Step 11 | `test: EditMode 测试与无头验证脚本` | ⬜ |
+| Step 11 | `test: EditMode 测试与无头验证脚本` | ✅ |
 | Step 12 | `docs: 完善使用与架构文档，发布 0.1.0` | ⬜ |
+
+---
+
+## 7. 已知遗留
+
+| 项 | 现状 | 影响 | 打算怎么办 |
+| --- | --- | --- | --- |
+| 仓库里没有任何 `.meta` 文件 | 所有 `.cs` / `.asmdef` 都没有入库；Unity 打开后会自己补 | 别人 `git clone` 后拿到的 GUID 与本机不一致，Prefab / 材质上的引用可能对不上；作为 UPM 包分发时也不规范 | 发版前跑一次 Unity 让编辑器生成，再把 `*.meta` 一起提交（这是 Unity 包的常规做法） |
+| 真实 PSD 冒烟依赖本机样本 | 样本有体积与授权问题，不入库 | 默认只跑自造字节流的 12 个用例 | 需要时用 `PSD2UGUI_SMOKE_PSD=<样本.psd>` 指过去 |
+| TMP 分支未在真实 TMP 工程里验证 | 宿主工程没导 TMP Essentials，走的是 `text.tmp-unavailable` 降级路径 | 文本落在 UGUI Text 上；TMP 路径的控件装配只过了编译检查 | 在装了 TMP 的工程里跑一次 `dev-project.sh`，或手工核对 |
+| 16bit / CMYK / 智能对象 / 矢量蒙版 | 解析器按分级支持处理，遇到不认识的会出诊断而不是静默出错 | 个别设计稿还原度不够 | 按真实报错逐条补，诊断里已经能定位到图层 |

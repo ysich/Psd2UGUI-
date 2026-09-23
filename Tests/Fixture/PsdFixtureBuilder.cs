@@ -4,7 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 
-namespace Psd2Ugui.CoreTests
+namespace Psd2Ugui.Testing
 {
     /// <summary>图层记录的一种通道写法。Payload 不含 2 字节压缩头。</summary>
     internal sealed class ChannelSpec

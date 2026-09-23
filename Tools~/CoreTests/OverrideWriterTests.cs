@@ -2,6 +2,7 @@ using Psd2Ugui.Core.Contract;
 using Psd2Ugui.Core.Psd;
 using Psd2Ugui.Core.Semantics;
 using Xunit;
+using Psd2Ugui.Testing;
 
 namespace Psd2Ugui.CoreTests
 {
