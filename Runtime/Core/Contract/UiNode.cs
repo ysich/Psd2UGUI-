@@ -71,6 +71,13 @@ namespace Psd2Ugui.Core.Contract
         public bool Clipping;
         public string SectionKind = string.Empty;
         public string ResourceId;
+
+        /// <summary>`ref` / `refp` 的复用目标名，空表示不是引用节点。</summary>
+        public string ReferenceTarget;
+
+        /// <summary>true 表示 `refp`（复用子 Prefab），false 表示 `ref`（复用图片）。</summary>
+        public bool IsPrefabReference;
+
         public UiBorder Border;
         public UiColor Fill;
         public bool HasFill;

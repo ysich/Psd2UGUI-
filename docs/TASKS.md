@@ -50,7 +50,7 @@ Psd2UGUI/                          # UPM 包
 │  ├─ Contract/                    # 中间契约：文档、节点、资源、诊断、JSON 写出
 │  ├─ Psd/                         # PSD 二进制解析器（PSD/PSB、RLE/ZIP）
 │  ├─ Imaging/                     # 位图、裁剪/去空、PNG 编码、九宫检测
-│  ├─ Semantics/                   # 标签解析、类型推断、角色分配、覆盖表
+│  ├─ Semantics/                   # 标签解析、类型推断、角色分配、覆盖表、节点树构建
 │  └─ Pipeline/                    # 编排、选项、预检
 ├─ Editor/                         # Unity Editor 侧
 │  ├─ Import/                      # 读取 PSD、Sprite 落盘、导入设置、资源复用
@@ -155,13 +155,32 @@ Psd2UGUI/                          # UPM 包
 
 ### Step 4 · 语义标签与类型推断
 
-- [ ] 标签解析：`Name.btn` / `Name.text` / `Name.tmp` / `Name.img` / `Name.rimg` / `Name.sv` / `Name.sld` / `Name.tg` / `Name.ipt` / `Name.dpd` / `Name.panel` / `Name.mask` / `Name.color`
-- [ ] 角色标签：`bg` / `onover` / `press` / `select` / `disable` / `bttxt` / `fill` / `handle` / `vpt` / `hbar` / `vbar` / `dpdicon` / `placeholder` / `ipttxt` / `mark` / `tglb` / `ignore`
-- [ ] 启发式推断：无标签时按图层类型/名称/结构/尺寸推断控件与角色
-- [ ] 覆盖表：JSON 形式的 `overrides` 支持人工指定类型与层级
-- [ ] `ITypeInferrer` 接口（预留 AI 推断实现位）
+- [x] 标签解析：`Name.btn` / `Name.text` / `Name.tmp` / `Name.img` / `Name.rimg` / `Name.sv` / `Name.sld` / `Name.tg` / `Name.ipt` / `Name.dpd` / `Name.panel` / `Name.mask` / `Name.color`，共 60 余个类型标签
+- [x] 角色标签：`bg` / `onover` / `press` / `select` / `disable` / `bttxt` / `fill` / `handle` / `vpt` / `hbar` / `vbar` / `dpdicon` / `placeholder` / `ipttxt` / `mark` / `tglb` / `ignore` 等
+- [x] 开关标签：`sliced`（九宫）、`ignore`（跳过整棵子树）、`ref` / `refp`（复用图片 / 子 Prefab）
+- [x] 启发式推断：无标签时按文本层 → 分组 → 纯色填充 → 名称关键词 → 像素数据依次判断；写了角色标签的节点不抢控件类型
+- [x] 节点树构建：分组嵌套、绝对坐标、稳定 ID、隐藏层策略、文本与纯色填充映射
+- [x] 覆盖表：JSON 形式的 `overrides`，按 `名字` / `#图层ID` / `LayerPath` 匹配，支持类型、角色、改名、忽略、九宫、改层级、指定资源
+- [x] 未匹配的覆盖表条目、改层级造成循环都会给出诊断
+- [x] `ITypeInferrer` 接口（自定义推断器优先于启发式，返回 None 时交给下一个）
+- [x] 标签表与覆盖表格式写进 `docs/TAGS.md`
 - **验收**：标签用例表与推断用例表全部通过；误判可被覆盖表修正
+- **验收结果**：`dotnet test` 194 项全绿（标签表 45 条、推断规则 7 条、节点树与覆盖表 21 条）；
+  真实样本解析出 52 个节点（3 个分组），类型分布
+  `button=2, dropdown=1, fill-color=6, group=2, image=14, input-field=1, panel=1, scroll-view=2, slider=1, tmp-button=3, tmp-text=17, toggle=2`，
+  标签命中 42 个、推断补齐 31 个、引用 4 个，只有 1 条 Info 诊断（`CircleFilled.filled.bg` 里的 `filled` 是不认识的标签）；
+  `--overrides` 实测可以改类型 / 角色 / 改名 / 改层级，未匹配条目给出警告
 - **提交**：`feat(core): 图层语义标签与控件类型推断`
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| `ToggleLabel.label` 只识别出类型、角色丢了 | `label` 同时出现在类型表与角色表里，而类型表先被查 | 类型表里去掉 `label`，它只是一个角色 |
+| `Sky.ignore` 没有跳过图层 | `ignore` 先在类型表里命中，函数提前返回，忽略开关没被赋值 | 忽略开关放在类型查表之前处理，同时把类型设为 `Ignore` |
+| 一条覆盖表只能改一个字段 | 取值用的是“第一条命中”，类型与角色写成两条时后一条永远不生效 | 改成取“最后一条命中”，多条命中时后面的覆盖前面的 |
+| 覆盖表写错名字却悄悄不生效 | 匹配不到节点时没有任何反馈 | 匹配不到就给 `override.unmatched` 警告 |
+| `ref X` 这类图层被判成按钮 | 引用节点也走名字关键词 | 引用节点先判成 Image（分组除外），类型交给标签或覆盖表 |
 
 ### Step 5 · 九宫检测与 PNG 编码
 
@@ -260,7 +279,7 @@ Psd2UGUI/                          # UPM 包
 | Step 2 | `feat(core): 自研 PSD 二进制解析器` | ✅ |
 | Step 3 | `feat(core): 图层树构建与位图合成` | ✅ |
 
-| Step 4 | `feat(core): 图层语义标签与控件类型推断` | ⬜ |
+| Step 4 | `feat(core): 图层语义标签与控件类型推断` | ✅ |
 | Step 5 | `feat(core): 自动九宫检测与 PNG 编码器` | ⬜ |
 | Step 6 | `feat(editor): Sprite 导出与导入设置` | ⬜ |
 | Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ⬜ |

@@ -5,6 +5,7 @@ using System.Text;
 using Psd2Ugui.Core.Contract;
 using Psd2Ugui.Core.Imaging;
 using Psd2Ugui.Core.Json;
+using Psd2Ugui.Core.Semantics;
 
 
 using Psd2Ugui.Core.Psd;
@@ -23,7 +24,8 @@ namespace Psd2Ugui.Tools
             Console.OutputEncoding = Encoding.UTF8;
             if (args.Length == 0)
             {
-                Console.WriteLine("用法: PsdDump <file.psd> [--json out.json]");
+                Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
+            Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json]");
                 return 2;
             }
 
@@ -32,23 +34,33 @@ namespace Psd2Ugui.Tools
             string layersPath = null;
             string pixelsPath = null;
             string compositePath = null;
-            for (int i = 1; i < args.Length - 1; i++)
+            string overridesPath = null;
+            bool showNodes = false;
+            for (int i = 1; i < args.Length; i++)
             {
                 if (args[i] == "--json")
                 {
-                    jsonPath = args[i + 1];
+                    jsonPath = Next(args, ref i);
                 }
                 else if (args[i] == "--layers")
                 {
-                    layersPath = args[i + 1];
+                    layersPath = Next(args, ref i);
                 }
                 else if (args[i] == "--pixels")
                 {
-                    pixelsPath = args[i + 1];
+                    pixelsPath = Next(args, ref i);
                 }
                 else if (args[i] == "--composite")
                 {
-                    compositePath = args[i + 1];
+                    compositePath = Next(args, ref i);
+                }
+                else if (args[i] == "--overrides")
+                {
+                    overridesPath = Next(args, ref i);
+                }
+                else if (args[i] == "--nodes")
+                {
+                    showNodes = true;
                 }
             }
 
@@ -89,12 +101,21 @@ namespace Psd2Ugui.Tools
                 DumpLayer(file.RootLayers[i], 0, file);
             }
 
+            var buildOptions = new NodeBuildOptions();
+            if (!string.IsNullOrEmpty(overridesPath))
+            {
+                buildOptions.Overrides = NodeOverrides.Parse(File.ReadAllText(overridesPath));
+                Console.WriteLine("覆盖表    : " + overridesPath + " (" + buildOptions.Overrides.Entries.Count + " 条)");
+            }
+
+            UiDocument document = NodeBuilder.Build(file, buildOptions);
+            PrintSemantics(document, showNodes);
+
             if (!string.IsNullOrEmpty(jsonPath))
             {
-                UiDocument document = BuildContract(file);
                 File.WriteAllText(jsonPath, ContractJson.ToJsonText(document), new UTF8Encoding(false));
                 Console.WriteLine();
-                Console.WriteLine("已输出契约草稿: " + jsonPath);
+                Console.WriteLine("已输出契约: " + jsonPath);
             }
 
             if (!string.IsNullOrEmpty(layersPath))
@@ -303,32 +324,67 @@ namespace Psd2Ugui.Tools
             }
         }
 
-        private static UiDocument BuildContract(PsdFile file)
+        private static string Next(string[] args, ref int index)
         {
-            var document = new UiDocument();
-            document.Document = new PsdMeta
-            {
-                Name = Path.GetFileNameWithoutExtension(file.FileName),
-                FileName = file.FileName,
-                Width = file.Width,
-                Height = file.Height,
-                ChannelCount = file.ChannelCount,
-                BitDepth = file.BitDepth,
-                ColorMode = file.ColorMode,
-                LayerCount = file.Layers.Count,
-                ResolutionPpi = file.ResolutionPpi
-            };
+            return index + 1 < args.Length ? args[++index] : null;
+        }
 
-            var root = new UiNode
+        /// <summary>打印语义层结果：类型分布 + 诊断统计（可选打印节点树）。</summary>
+        private static void PrintSemantics(UiDocument document, bool showNodes)
+        {
+            Console.WriteLine();
+            Console.WriteLine("节点      : " + document.Stats["nodes"] + " 个（组 " + document.Stats["groups"] + "）");
+            Console.WriteLine("类型分布  : " + document.Stats["types"]);
+            Console.WriteLine("来源      : 标签 " + document.Stats["tagged"] + " / 推断 " + document.Stats["inferred"] +
+                              " / 覆盖 " + document.Stats["overridden"] + " / 引用 " + document.Stats["references"] +
+                              " / 隐藏 " + document.Stats["hidden"] + " / 忽略 " + document.Stats["ignored"]);
+            Console.WriteLine("诊断      : " + document.Diagnostics.Count +
+                              " (E" + document.CountSeverity(DiagnosticSeverity.Error) +
+                              "/W" + document.CountSeverity(DiagnosticSeverity.Warning) +
+                              "/I" + document.CountSeverity(DiagnosticSeverity.Info) + ")");
+
+            if (!showNodes)
             {
-                Id = StableId.NodeId("__root__", -1),
-                Name = document.Document.Name,
-                LayerPath = string.Empty,
-                Type = UiElementType.Group,
-                Rect = new UiRect(0d, 0d, file.Width, file.Height)
-            };
-            document.Root = root;
-            return document;
+                return;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("节点树:");
+            PrintNode(document.Root, 0);
+        }
+
+        private static void PrintNode(UiNode node, int depth)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            var builder = new StringBuilder();
+            builder.Append(new string(' ', depth * 2));
+            builder.Append('[').Append(node.Type.ToContract());
+            if (node.Role != UiRole.None)
+            {
+                builder.Append(':').Append(node.Role.ToContract());
+            }
+
+            builder.Append("] ").Append(node.Name);
+            builder.Append("  ").Append(node.Rect);
+            if (!node.Visible)
+            {
+                builder.Append("  (隐藏)");
+            }
+
+            if (node.Id.Length > 0 && depth > 0)
+            {
+                builder.Append("  #").Append(node.Id);
+            }
+
+            Console.WriteLine(builder.ToString());
+            for (int i = node.Children.Count - 1; i >= 0; i--)
+            {
+                PrintNode(node.Children[i], depth + 1);
+            }
         }
     }
 }

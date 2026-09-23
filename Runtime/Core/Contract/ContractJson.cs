@@ -375,6 +375,16 @@ namespace Psd2Ugui.Core.Contract
                 json.Set("resourceId", JsonValue.String(node.ResourceId));
             }
 
+            if (!string.IsNullOrEmpty(node.ReferenceTarget))
+            {
+                json.Set("reference", JsonValue.String(node.ReferenceTarget));
+                if (node.IsPrefabReference)
+                {
+                    json.Set("referenceKind", JsonValue.String("prefab"));
+                }
+            }
+
+
             if (node.Border != null)
             {
                 json.Set("border", BorderToJson(node.Border));
@@ -442,6 +452,10 @@ namespace Psd2Ugui.Core.Contract
             node.Clipping = json["clipping"].AsBool();
             node.SectionKind = json["sectionKind"].AsString(string.Empty);
             node.ResourceId = json["resourceId"].IsNull ? null : json["resourceId"].AsString(string.Empty);
+            node.ReferenceTarget = json["reference"].IsNull ? null : json["reference"].AsString(string.Empty);
+            node.IsPrefabReference = string.Equals(json["referenceKind"].AsString(string.Empty), "prefab",
+                System.StringComparison.OrdinalIgnoreCase);
+
             node.Border = BorderFromJson(json["border"]);
             JsonValue fill = json["fill"];
             if (!fill.IsNull)
