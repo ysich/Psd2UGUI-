@@ -25,7 +25,7 @@ namespace Psd2Ugui.Tools
             if (args.Length == 0)
             {
                 Console.WriteLine("用法: PsdDump <file.psd> [--json out.json] [--layers out.json] [--nodes]");
-            Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json]");
+            Console.WriteLine("      [--pixels dir] [--composite file] [--overrides overrides.json] [--sprites dir]");
                 return 2;
             }
 
@@ -35,6 +35,7 @@ namespace Psd2Ugui.Tools
             string pixelsPath = null;
             string compositePath = null;
             string overridesPath = null;
+            string spritesPath = null;
             bool showNodes = false;
             for (int i = 1; i < args.Length; i++)
             {
@@ -57,6 +58,10 @@ namespace Psd2Ugui.Tools
                 else if (args[i] == "--overrides")
                 {
                     overridesPath = Next(args, ref i);
+                }
+                else if (args[i] == "--sprites")
+                {
+                    spritesPath = Next(args, ref i);
                 }
                 else if (args[i] == "--nodes")
                 {
@@ -129,6 +134,12 @@ namespace Psd2Ugui.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine("已输出图层像素: " + DumpPixels(file, pixelsPath) + " 个 -> " + pixelsPath);
+            }
+
+            if (!string.IsNullOrEmpty(spritesPath))
+            {
+                Console.WriteLine();
+                Console.WriteLine("已输出 Sprite: " + DumpSprites(file, document, spritesPath) + " 个 -> " + spritesPath);
             }
 
             if (!string.IsNullOrEmpty(compositePath))
@@ -322,6 +333,71 @@ namespace Psd2Ugui.Tools
             {
                 DumpLayer(layer.Children[i], depth + 1, file);
             }
+        }
+
+        /// <summary>
+        /// 把 Image / RawImage 节点导成 PNG，并附上九宫检测结果。
+        /// 图集之外的处理（导入设置、资源复用）在 Unity 侧的 Step 6 完成，这里只负责像素与九宫。
+        /// </summary>
+        private static int DumpSprites(PsdFile file, UiDocument document, string directory)
+        {
+            Directory.CreateDirectory(directory);
+            var warnings = new List<string>();
+            JsonValue index = JsonValue.Array();
+            int written = 0;
+            foreach (UiNode node in document.Nodes())
+            {
+                if (node.Type != UiElementType.Image && node.Type != UiElementType.RawImage)
+                {
+                    continue;
+                }
+
+                PsdLayer layer = file.FindLayer(node.LayerId);
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                Bitmap bitmap = LayerRasterizer.Rasterize(file, layer, warnings);
+                if (bitmap == null || bitmap.IsEmpty || bitmap.IsFullyTransparent())
+                {
+                    continue;
+                }
+
+                bool hinted = node.Tags.ContainsKey("nine-slice");
+                NineSliceResult result = NineSliceDetector.Detect(bitmap);
+                if (hinted && !result.IsSliceable)
+                {
+                    Console.WriteLine("警告: 图层标了 sliced 但没检测出九宫 -> " + node.Name + " (" + result.Reason + ")");
+                }
+
+                string fileName = node.LayerId + ".png";
+                PngEncoder.Write(Path.Combine(directory, fileName), result.Sprite);
+                index.Add(JsonValue.Object()
+                    .Set("id", JsonValue.Number(node.LayerId))
+                    .Set("name", JsonValue.String(node.Name))
+                    .Set("file", JsonValue.String(fileName))
+                    .Set("type", JsonValue.String(node.Type.ToContract()))
+                    .Set("hinted", JsonValue.Bool(hinted))
+                    .Set("width", JsonValue.Number(result.Sprite.Width))
+                    .Set("height", JsonValue.Number(result.Sprite.Height))
+                    .Set("border", JsonValue.Array()
+                        .Add(JsonValue.Number(result.Border.Left))
+                        .Add(JsonValue.Number(result.Border.Bottom))
+                        .Add(JsonValue.Number(result.Border.Right))
+                        .Add(JsonValue.Number(result.Border.Top)))
+                    .Set("sourceRect", JsonValue.Array()
+                        .Add(JsonValue.Number(result.SourceRect.X))
+                        .Add(JsonValue.Number(result.SourceRect.Y))
+                        .Add(JsonValue.Number(result.SourceRect.Width))
+                        .Add(JsonValue.Number(result.SourceRect.Height)))
+                    .Set("uniform", JsonValue.Bool(result.IsUniform))
+                    .Set("reason", JsonValue.String(result.Reason)));
+                written++;
+            }
+
+            File.WriteAllText(Path.Combine(directory, "index.json"), index.ToJsonString(true), new UTF8Encoding(false));
+            return written;
         }
 
         private static string Next(string[] args, ref int index)
