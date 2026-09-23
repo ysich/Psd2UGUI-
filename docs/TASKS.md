@@ -55,11 +55,13 @@ Psd2UGUI/                          # UPM 包
 │  ├─ Pipeline/                    # 编排、选项、预检、体检报告、共享资源表
 │  └─ Build/                       # 预制体装配计划（控件映射、布局换算，可 dotnet 测试）
 ├─ Editor/                         # Unity Editor 侧
-│  ├─ Import/                      # 读取 PSD、Sprite 落盘、导入设置、资源复用
+│  ├─ Psd2UguiPipeline.cs          # 流程编排（窗口 / 菜单 / 批处理共用）
+│  ├─ Psd2UguiWindow.cs            # 导入窗口
+│  ├─ Psd2UguiMenu.cs              # 菜单与右键入口
+│  ├─ Batch/                       # -executeMethod 批处理入口
+│  ├─ Import/                      # 读取 PSD、Sprite 落盘、导入设置、资源复用、预检
 │  ├─ Tmp/                          # 可选：TMP 文本后端（defineConstraints 控制是否参与编译）
-│  ├─ Build/                       # Prefab 装配、控件工厂、角色连线、TMP 效果、增量更新
-│  ├─ Reports/                     # 导出报告
-│  └─ Ui/                          # 编辑器窗口、节点树视图、菜单、批处理入口
+│  └─ Build/                       # Prefab 装配、控件工厂、角色连线、TMP 效果、增量更新
 ├─ Tests/                          # Unity EditMode 测试（NUnit + asmdef）
 ├─ Tools~/                         # Unity 忽略目录
 │  ├─ CoreTests/                   # dotnet 测试工程（直接编译 Runtime/Core 源码）
@@ -400,11 +402,48 @@ Assets/PSD2UGUI/
 
 ### Step 10 · 编辑器工作流
 
-- [ ] `Psd2UguiWindow`：拖入 PSD、节点树视图、类型/角色覆盖、选项面板、生成与报告区
-- [ ] 菜单与右键入口：`Assets/PSD2UGUI/…`（解析、导出资源、生成 Prefab、重新生成）
-- [ ] 批处理 API：`Psd2UguiPipeline.Run(options)`，可用于 CI / `-executeMethod`
+- [x] `Psd2UguiWindow`：拖入 PSD、节点树视图、类型/角色覆盖、选项面板、生成与报告区
+- [x] 菜单与右键入口：`Assets/PSD2UGUI/…`（解析、导出资源、生成 Prefab、重新生成）
+- [x] 批处理 API：`Psd2UguiPipeline.Run(options)`，可用于 CI / `-executeMethod`
 - **验收**：窗口可完成全流程；批处理 API 在 EditMode 测试中跑通
+- **验收结果**：Editor 脚本编译 0 错误 0 警告；`dotnet test` 349 项全绿（+6 覆盖表写入端）。
+  本机 Unity 起不了无头实例，窗口与批处理的**运行时**跑通顺延到 Step 11，
+  这里先说清手动核对步骤与命令行用法（见下）
 - **提交**：`feat(editor): 编辑器窗口与一键生成工作流`
+
+**这一版怎么做的**
+
+| 部件 | 位置 | 职责 |
+| --- | --- | --- |
+| `Psd2UguiPipeline` | `Editor/` | 唯一的流程编排：解析（含覆盖表）→ 跨界面复用 → 导出计划 → 预检 → 贴图落盘 → 契约 → 预制体（增量）→ 体检报告 |
+| `Psd2UguiRunOptions` / `Psd2UguiRunResult` | 同上 | 参数与结果模型，窗口、菜单、批处理共用同一份 |
+| `Psd2UguiWindow` | `Editor/` | 拖入 PSD、选项面板、节点树、类型/角色覆盖、诊断与报告区 |
+| `Psd2UguiMenu` | `Editor/` | `Assets/PSD2UGUI/…` 右键入口 + `Window/PSD2UGUI/…`，未选中 PSD 时自动置灰 |
+| `Psd2UguiBatch` | `Editor/Batch/` | `-executeMethod` 批处理：`-psd2ugui-psd`（可重复）/`-psd2ugui-psdDir`/`-psd2ugui-module`/`-psd2ugui-no-prefab`，按失败个数设置退出码 |
+| `NodeOverrides.Set/Remove/ToJsonText` | `Runtime/Core/Semantics` | 覆盖表的写入端：窗口改完类型/角色写回 `<AssetRoot>/overrides/<模块>/<源>.overrides.json` |
+
+窗口里的「写入覆盖表」用 `#<图层ID>` 作键：图层改名不会失效；改完立刻重解析，能马上看到效果。
+
+**手动核对步骤（本机没法跑 Unity，留给能跑的环境）**
+
+1. 打开 `Window/PSD2UGUI/导入窗口`，把 `Psd2UguiForm.psd` 拖进「源 PSD」，点「只解析」：
+   左边出现 52 个节点的树，右边显示选中节点的类型来源（标签 / 覆盖表 / 猜的）。
+2. 选中一个 `inferred` 的按钮 → 类型改成 `button` → 「写入覆盖表」→ 树里的类型来源变成「覆盖表」；
+   再点「一键生成 Prefab」→ `Assets/PSD2UGUI/prefab/common/Psd2UguiForm.prefab` 出现，
+   报告区显示节点数、贴图数与 E/W/I 计数，「打开报告」能定位到 `.report.json`。
+3. 手动改预制体里某个按钮的颜色 → 再点「一键生成 Prefab」→ 改动仍在（Step 8 的增量更新）。
+4. 批处理（CI）：
+   `Unity -batchmode -quit -projectPath <项目> -executeMethod Psd2Ugui.Editor.Batch.Psd2UguiBatch.Run
+   -psd2ugui-module common -psd2ugui-psdDir Assets/UI` → 退出码 0 表示全部成功。
+
+**踩过的坑（写下来避免以后重复踩）**
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 批处理加 `-psd2ugui-no-prefab` 后每个文件都算失败 | 成功判定写成「必须产出预制体」 | 按「这次期望的产物」判定：只导出时看文档与导出计划是否跑通 |
+| 点「只解析」也会往磁盘写契约 JSON | `WriteContract` 跟着开关走，而不是跟着产物走 | 「只解析」不写任何文件（报告与契约只在真正出产物时写） |
+| 节点树里的分组节点点不中 | 折叠三角和「选中」挤在同一个 `Foldout` 上 | 三角只负责展开/收起，名字单独做成可点按钮 |
+| 窗口、菜单、批处理三处参数容易走偏 | 各写各的流程 | 全部收敛到 `Psd2UguiPipeline.Run(Psd2UguiRunOptions)`，窗口只收集参数、菜单只传路径 |
 
 ### Step 11 · Unity 测试与无头验证
 
@@ -458,6 +497,6 @@ Assets/PSD2UGUI/
 | Step 7 | `feat(editor): uGUI Prefab 装配与文本效果` | ✅ |
 | Step 8 | `feat(editor): 增量更新与资源复用` | ✅ |
 | Step 9 | `feat(editor): 预检与诊断报告` | ✅ |
-| Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ⬜ |
+| Step 10 | `feat(editor): 编辑器窗口与一键生成工作流` | ✅ |
 | Step 11 | `test: EditMode 测试与无头验证脚本` | ⬜ |
 | Step 12 | `docs: 完善使用与架构文档，发布 0.1.0` | ⬜ |

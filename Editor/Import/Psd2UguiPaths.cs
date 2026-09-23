@@ -15,6 +15,8 @@ namespace Psd2Ugui.Editor.Import
     ///   manifest/&lt;module&gt;/&lt;source&gt;.psd2ugui.json 身份映射，供增量更新用
     ///   contract/&lt;module&gt;/&lt;source&gt;.json           契约 JSON，便于排查
     ///   prefab/&lt;module&gt;/&lt;source&gt;.prefab           Step 7 产出的预制体
+    ///   report/&lt;module&gt;/&lt;source&gt;.report.json       导入体检报告（耗时 / 产出 / 诊断）
+    ///   overrides/&lt;module&gt;/&lt;source&gt;.overrides.json  编辑器里改的类型/角色，重新导出时优先于标签
     /// </code>
     /// </summary>
     public static class Psd2UguiPaths
@@ -23,6 +25,8 @@ namespace Psd2Ugui.Editor.Import
         public const string ManifestFolder = "manifest";
         public const string ContractFolder = "contract";
         public const string PrefabFolder = "prefab";
+        public const string ReportFolder = "report";
+        public const string OverrideFolder = "overrides";
 
         public static string AssetRoot(ExportOptions options)
         {
@@ -76,6 +80,26 @@ namespace Psd2Ugui.Editor.Import
         public static string PrefabPath(ExportOptions options, string sourceName)
         {
             return PrefabDirectory(options) + "/" + SafeName(sourceName) + ".prefab";
+        }
+
+        public static string ReportDirectory(ExportOptions options)
+        {
+            return AssetRoot(options) + "/" + ReportFolder + "/" + ModuleName(options);
+        }
+
+        public static string ReportPath(ExportOptions options, string sourceName)
+        {
+            return ReportDirectory(options) + "/" + SafeName(sourceName) + ".report.json";
+        }
+
+        public static string OverrideDirectory(ExportOptions options)
+        {
+            return AssetRoot(options) + "/" + OverrideFolder + "/" + ModuleName(options);
+        }
+
+        public static string OverridePath(ExportOptions options, string sourceName)
+        {
+            return OverrideDirectory(options) + "/" + SafeName(sourceName) + ".overrides.json";
         }
 
         /// <summary>把 PSD 文件名收敛成可做文件名的形式（去掉扩展名与非法字符）。</summary>

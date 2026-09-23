@@ -186,5 +186,87 @@ namespace Psd2Ugui.Core.Semantics
             return matches == null ? null : matches[matches.Count - 1];
         }
 
+        /// <summary>按 key 取条目，没有就新建一条（编辑器里改类型/角色时用）。</summary>
+        public NodeOverride Set(string key)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                if (string.Equals(Entries[i].Key, key, StringComparison.Ordinal))
+                {
+                    return Entries[i];
+                }
+            }
+
+            var entry = new NodeOverride { Key = key };
+            Entries.Add(entry);
+            return entry;
+        }
+
+        /// <summary>删掉一条覆盖。返回是否真的删掉了。</summary>
+        public bool Remove(string key)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                if (string.Equals(Entries[i].Key, key, StringComparison.Ordinal))
+                {
+                    Entries.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>写成 JSON：只写用户真正设过的字段，空条目直接丢掉。</summary>
+        public string ToJsonText(bool indented = true)
+        {
+            JsonValue nodes = JsonValue.Object();
+            for (int i = 0; i < Entries.Count; i++)
+            {
+                NodeOverride entry = Entries[i];
+                JsonValue item = JsonValue.Object();
+                if (entry.HasType)
+                {
+                    item.Set("type", JsonValue.String(entry.Type.ToContract()));
+                }
+
+                if (entry.HasRole)
+                {
+                    item.Set("role", JsonValue.String(entry.Role.ToContract()));
+                }
+
+                if (!string.IsNullOrEmpty(entry.Name))
+                {
+                    item.Set("name", JsonValue.String(entry.Name));
+                }
+
+                if (entry.Ignore)
+                {
+                    item.Set("ignore", JsonValue.Bool(true));
+                }
+
+                if (entry.HasNineSlice)
+                {
+                    item.Set("nineSlice", JsonValue.Bool(entry.NineSlice));
+                }
+
+                if (!string.IsNullOrEmpty(entry.Parent))
+                {
+                    item.Set("parent", JsonValue.String(entry.Parent));
+                }
+
+                if (!string.IsNullOrEmpty(entry.Resource))
+                {
+                    item.Set("resource", JsonValue.String(entry.Resource));
+                }
+
+                if (item.Count > 0)
+                {
+                    nodes.Set(entry.Key, item);
+                }
+            }
+
+            return JsonValue.Object().Set("nodes", nodes).ToJsonString(indented);
+        }
     }
 }
