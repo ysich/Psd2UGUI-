@@ -43,6 +43,7 @@ namespace Psd2Ugui.Core.Build
             if (root != null)
             {
                 root.Name = string.IsNullOrEmpty(document.Document.Name) ? "Root" : document.Document.Name;
+                PrefabNodeNaming.Apply(root, options.UseTmpText);
                 document.Stats["prefabNodes"] = Count(root).ToString();
                 document.Stats["prefabConsumed"] = context.Consumed.ToString();
             }
@@ -668,16 +669,24 @@ namespace Psd2Ugui.Core.Build
                 case UiElementType.FillColor:
                     return ControlKind.FillColor;
                 case UiElementType.Button:
+                case UiElementType.TmpButton:
                     return ControlKind.Button;
                 case UiElementType.Toggle:
+                case UiElementType.TmpToggle:
                     return ControlKind.Toggle;
+                case UiElementType.ToggleGroup:
+                    return ControlKind.ToggleGroup;
+                case UiElementType.Grid:
+                    return ControlKind.Grid;
                 case UiElementType.Slider:
                     return ControlKind.Slider;
                 case UiElementType.ScrollView:
                     return ControlKind.ScrollView;
                 case UiElementType.Dropdown:
+                case UiElementType.TmpDropdown:
                     return ControlKind.Dropdown;
                 case UiElementType.InputField:
+                case UiElementType.TmpInputField:
                     return ControlKind.InputField;
                 case UiElementType.Ignore:
                     return ControlKind.Rect;

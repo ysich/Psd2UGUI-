@@ -108,6 +108,13 @@ Assets/PSD2UGUI/
 完整清单见 **[图层命名与覆盖表](TAGS.md)**。不写标签也能跑：解析器会先看文本/分组/纯色这类
 结构性事实，再看名字关键词猜，每条推断都会带上 `type-source: inferred` 标记，窗口里能直接看到。
 
+### 7.1 预制体节点名
+
+生成预制体时，根对象保留界面名；根以下节点会按实际 uGUI 组件自动加绑定前缀，供
+`UIScriptGenerator` 识别，例如 `m_img_Icon`、`m_btn_Start`、`m_text_Title`、
+`m_tmp_Name`、`m_scroll_List`。重复导出不会重复叠加前缀，增量更新仍按节点稳定 ID
+匹配。未安装 TextMeshPro 时，TMP 文本回退为 `Text`，节点使用 `m_text_` 前缀。
+
 ## 8. 推断错了怎么办
 
 三种改法，按「影响范围从小到大」：

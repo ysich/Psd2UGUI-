@@ -193,6 +193,7 @@ namespace Psd2Ugui.Editor
             // 6. 装配预制体
             if (options.GeneratePrefab)
             {
+                options.Build.UseTmpText = TmpBackend.Available;
                 PlanNode plan = PrefabPlanner.Build(document, options.Build);
                 if (plan == null)
                 {

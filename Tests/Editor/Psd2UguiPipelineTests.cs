@@ -77,13 +77,13 @@ namespace Psd2Ugui.Tests
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(result.PrefabPath);
             Assert.IsNotNull(prefab);
 
-            Transform bg = prefab.transform.Find("Bg");
+            Transform bg = prefab.transform.Find("m_img_Bg");
             Assert.IsNotNull(bg, "找不到 Bg 节点");
             Assert.IsNotNull(bg.GetComponent<Image>(), "Bg 应该是 Image");
             Assert.IsNotNull(bg.GetComponent<Psd2UguiNode>(), "节点上应该挂着来源标记");
             Assert.IsNotNull(bg.GetComponent<Image>().sprite, "Image 应该拿到导出的 Sprite");
 
-            Transform button = prefab.transform.Find("Button");
+            Transform button = prefab.transform.Find("m_btn_Button");
             Assert.IsNotNull(button, "找不到 Button 节点");
             Assert.IsNotNull(button.GetComponent<Button>(), "按标签生成的应该是 Button");
         }
@@ -96,7 +96,7 @@ namespace Psd2Ugui.Tests
 
             // 模拟美术/程序在预制体上手动改：换个颜色，再挂一个自己的子节点
             GameObject contents = PrefabUtility.LoadPrefabContents(first.PrefabPath);
-            Transform bg = contents.transform.Find("Bg");
+            Transform bg = contents.transform.Find("m_img_Bg");
             var image = bg.GetComponent<Image>();
             image.color = new Color(1f, 0f, 0f, 1f);
             var handmade = new GameObject("人工加的", typeof(RectTransform));
@@ -109,7 +109,7 @@ namespace Psd2Ugui.Tests
 
             Assert.IsNotNull(second.Prefab);
             contents = PrefabUtility.LoadPrefabContents(second.PrefabPath);
-            Transform again = contents.transform.Find("Bg");
+            Transform again = contents.transform.Find("m_img_Bg");
             Assert.IsNotNull(again.Find("人工加的"), "人工加的子节点被删了");
             Assert.AreEqual(Color.red, again.GetComponent<Image>().color, "人工改的颜色被覆盖了");
             PrefabUtility.UnloadPrefabContents(contents);
@@ -120,14 +120,14 @@ namespace Psd2Ugui.Tests
         {
             WriteFixture("Bg.img", "Icon.img");
             Psd2UguiRunResult first = Run();
-            Assert.IsTrue(HasChild(first.PrefabPath, "Icon"), "第一次导出应该有 Icon");
+            Assert.IsTrue(HasChild(first.PrefabPath, "m_img_Icon"), "第一次导出应该有 Icon");
 
             WriteFixture("Bg.img");
             Psd2UguiRunResult second = Run();
 
             Assert.IsNotNull(second.Prefab);
-            Assert.IsTrue(HasChild(second.PrefabPath, "Bg"), "Bg 不该消失");
-            Assert.IsFalse(HasChild(second.PrefabPath, "Icon"), "Icon 应该被移除");
+            Assert.IsTrue(HasChild(second.PrefabPath, "m_img_Bg"), "Bg 不该消失");
+            Assert.IsFalse(HasChild(second.PrefabPath, "m_img_Icon"), "Icon 应该被移除");
         }
 
         [Test]
@@ -138,11 +138,11 @@ namespace Psd2Ugui.Tests
             Psd2UguiRunResult second = Run();
 
             GameObject contents = PrefabUtility.LoadPrefabContents(second.PrefabPath);
-            Transform bg = contents.transform.Find("Bg");
+            Transform bg = contents.transform.Find("m_img_Bg");
             Assert.AreEqual(1, bg.GetComponents<Image>().Length, "Image 挂了两遍");
             Assert.AreEqual(1, bg.GetComponents<Graphic>().Length, "视觉件挂了两遍");
 
-            Transform button = contents.transform.Find("Button");
+            Transform button = contents.transform.Find("m_btn_Button");
             Assert.AreEqual(1, button.GetComponents<Button>().Length, "Button 挂了两遍");
             PrefabUtility.UnloadPrefabContents(contents);
         }
@@ -164,7 +164,7 @@ namespace Psd2Ugui.Tests
             Assert.AreEqual(pngBefore, CountPngs("Assets/PSD2UGUI-Test/Out/sprite/shared"), "目录里多出了文件");
 
             GameObject contents = PrefabUtility.LoadPrefabContents(second.PrefabPath);
-            Transform logo = contents.transform.Find("Logo");
+            Transform logo = contents.transform.Find("m_img_Logo");
             Assert.IsNotNull(logo, "找不到引用节点");
             Sprite sprite = logo.GetComponent<Image>().sprite;
             Assert.IsNotNull(sprite, "引用节点没拿到共享贴图");
@@ -178,7 +178,7 @@ namespace Psd2Ugui.Tests
             WriteFixture("Bg.img");
             Psd2UguiRunResult first = Run();
             bool firstIsImage = OnPrefab(first.PrefabPath,
-                contents => contents.transform.Find("Bg").GetComponent<Image>() != null);
+                contents => contents.transform.Find("m_img_Bg").GetComponent<Image>() != null);
             Assert.IsTrue(firstIsImage, "默认应该是 Image");
 
             UiNode node = first.Document.Root.Children[0];
@@ -192,7 +192,7 @@ namespace Psd2Ugui.Tests
             Psd2UguiRunResult second = Run();
 
             bool secondIsButton = OnPrefab(second.PrefabPath,
-                contents => contents.transform.Find("Bg").GetComponent<Button>() != null);
+                contents => contents.transform.Find("m_btn_Bg").GetComponent<Button>() != null);
             Assert.IsTrue(secondIsButton, "覆盖表没生效");
             Assert.AreEqual("override", second.Document.Root.Children[0].Tags["type-source"]);
         }

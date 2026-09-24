@@ -53,11 +53,17 @@ namespace Psd2Ugui.CoreTests
         [InlineData(UiElementType.TmpText, ControlKind.TmpText)]
         [InlineData(UiElementType.FillColor, ControlKind.FillColor)]
         [InlineData(UiElementType.Button, ControlKind.Button)]
+        [InlineData(UiElementType.TmpButton, ControlKind.Button)]
         [InlineData(UiElementType.Toggle, ControlKind.Toggle)]
+        [InlineData(UiElementType.TmpToggle, ControlKind.Toggle)]
+        [InlineData(UiElementType.ToggleGroup, ControlKind.ToggleGroup)]
         [InlineData(UiElementType.Slider, ControlKind.Slider)]
         [InlineData(UiElementType.ScrollView, ControlKind.ScrollView)]
         [InlineData(UiElementType.Dropdown, ControlKind.Dropdown)]
+        [InlineData(UiElementType.TmpDropdown, ControlKind.Dropdown)]
         [InlineData(UiElementType.InputField, ControlKind.InputField)]
+        [InlineData(UiElementType.TmpInputField, ControlKind.InputField)]
+        [InlineData(UiElementType.Grid, ControlKind.Grid)]
         public void 契约类型映射成控件(UiElementType type, ControlKind expected)
         {
             UiDocument document = Doc(Node("X", type, 0, 0, 10, 10));
@@ -251,10 +257,10 @@ namespace Psd2Ugui.CoreTests
 
             Assert.Same(plan.Slots[PrefabPlanner.SlotViewport], plan.Children[0]);
             Assert.Same(plan.Slots[PrefabPlanner.SlotVerticalScrollbar], plan.Children[1]);
-            Assert.Equal("Content", content.Name);
+            Assert.Equal("m_rect_Content", content.Name);
             Assert.True(content.IsTemplate);
             Assert.Single(content.Children);
-            Assert.Equal("Row", content.Children[0].Name);
+            Assert.Equal("m_img_Row", content.Children[0].Name);
             Assert.NotNull(content.Anchor);
         }
 
@@ -308,7 +314,7 @@ namespace Psd2Ugui.CoreTests
             PlanNode content = template.Slots[PrefabPlanner.SlotContent];
             Assert.Same(viewport, template.Children[0]);
             Assert.Same(content, viewport.Children[0]);
-            Assert.Equal("Item", content.Children[0].Name);
+            Assert.Equal("m_toggle_Item", content.Children[0].Name);
             Assert.Equal(ControlKind.Toggle, content.Children[0].Kind);
             Assert.NotNull(plan.Slots[PrefabPlanner.SlotItemText]);
             Assert.Equal(ControlKind.Text, plan.Slots[PrefabPlanner.SlotItemText].Kind);

@@ -26,5 +26,11 @@ namespace Psd2Ugui.Core.Build
 
         /// <summary>TMP 节点的文本效果用 TMP 自身的能力近似。</summary>
         public bool ApplyEffects = true;
+
+        /// <summary>
+        /// 工程是否安装了 TextMeshPro。未安装时 TMP 文本会回退到 uGUI Text，
+        /// 同时使用 m_text_ 前缀，避免生成出指向不存在 TMP 组件的绑定。
+        /// </summary>
+        public bool UseTmpText = true;
     }
 }

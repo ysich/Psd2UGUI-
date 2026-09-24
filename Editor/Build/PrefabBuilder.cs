@@ -121,6 +121,7 @@ namespace Psd2Ugui.Editor.Build
             }
 
             ControlFactory.ApplyVisual(plan, go, context);
+            ApplyLayoutComponents(plan, go);
             context.NodesCreated++;
 
             string key = PlanKeys.Join(parentKey, PlanKeys.Key(plan));
@@ -182,6 +183,7 @@ namespace Psd2Ugui.Editor.Build
 
             RemoveStaleComponents(plan, go, context);
             ControlFactory.ApplyVisual(plan, go, context);
+            ApplyLayoutComponents(plan, go);
 
             if (!string.IsNullOrEmpty(plan.PrefabTarget))
             {
@@ -356,6 +358,16 @@ namespace Psd2Ugui.Editor.Build
                 UnityEngine.Object.DestroyImmediate(go.GetComponent<Toggle>(), true);
             }
 
+            if (plan.Kind != ControlKind.ToggleGroup && go.GetComponent<ToggleGroup>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<ToggleGroup>(), true);
+            }
+
+            if (plan.Kind != ControlKind.Grid && go.GetComponent<GridLayoutGroup>() != null)
+            {
+                UnityEngine.Object.DestroyImmediate(go.GetComponent<GridLayoutGroup>(), true);
+            }
+
             if (plan.Kind != ControlKind.Slider && go.GetComponent<Slider>() != null)
             {
                 UnityEngine.Object.DestroyImmediate(go.GetComponent<Slider>(), true);
@@ -383,6 +395,18 @@ namespace Psd2Ugui.Editor.Build
             }
         }
 
+        private static void ApplyLayoutComponents(PlanNode plan, GameObject go)
+        {
+            if (plan.Kind == ControlKind.ToggleGroup)
+            {
+                GetOrAdd<ToggleGroup>(go);
+            }
+            else if (plan.Kind == ControlKind.Grid)
+            {
+                GetOrAdd<GridLayoutGroup>(go);
+            }
+        }
+
         private static void Wire(PlanNode plan, GameObject go, Dictionary<string, GameObject> index, string key,
             PrefabBuildContext context)
         {
@@ -393,6 +417,9 @@ namespace Psd2Ugui.Editor.Build
                     break;
                 case ControlKind.Toggle:
                     WireToggle(plan, go, index, key);
+                    break;
+                case ControlKind.ToggleGroup:
+                    WireToggleGroup(go);
                     break;
                 case ControlKind.Slider:
                     WireSlider(plan, go, index, key, context);
@@ -471,6 +498,19 @@ namespace Psd2Ugui.Editor.Build
             var toggle = GetOrAdd<Toggle>(go);
             toggle.targetGraphic = GraphicOn(Slot(plan, index, key, PrefabPlanner.SlotTarget));
             toggle.graphic = GraphicOn(Slot(plan, index, key, PrefabPlanner.SlotCheckmark));
+        }
+
+        private static void WireToggleGroup(GameObject go)
+        {
+            ToggleGroup group = GetOrAdd<ToggleGroup>(go);
+            Toggle[] toggles = go.GetComponentsInChildren<Toggle>(true);
+            for (int i = 0; i < toggles.Length; i++)
+            {
+                if (toggles[i].gameObject != go)
+                {
+                    toggles[i].group = group;
+                }
+            }
         }
 
         private static void WireSlider(PlanNode plan, GameObject go, Dictionary<string, GameObject> index,

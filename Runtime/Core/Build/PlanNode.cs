@@ -26,6 +26,10 @@ namespace Psd2Ugui.Core.Build
 
         Button,
         Toggle,
+        /// <summary>ToggleGroup 组件。</summary>
+        ToggleGroup,
+        /// <summary>GridLayoutGroup 组件。</summary>
+        Grid,
         Slider,
 
         /// <summary>滚动条（ScrollRect 的 verticalScrollbar / horizontalScrollbar）。</summary>
