@@ -133,6 +133,30 @@ namespace Psd2Ugui.Core.Imaging
             return result;
         }
 
+        /// <summary>
+        /// 把图贴到一张补了透明边的画布上（原图左上角落在给定的空边之后），只搬字节不做混合。
+        /// 去空边导出的图要按图层矩形原样铺回去时用得上。
+        /// </summary>
+        public static Bitmap Pad(Bitmap bitmap, int left, int top, int right, int bottom)
+        {
+            if (bitmap == null)
+            {
+                return new Bitmap(0, 0);
+            }
+
+            int originX = left < 0 ? 0 : left;
+            int originY = top < 0 ? 0 : top;
+            var result = new Bitmap(originX + bitmap.Width + (right < 0 ? 0 : right),
+                originY + bitmap.Height + (bottom < 0 ? 0 : bottom));
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                Array.Copy(bitmap.Pixels, y * bitmap.Width * 4, result.Pixels,
+                    ((originY + y) * result.Width + originX) * 4, bitmap.Width * 4);
+            }
+
+            return result;
+        }
+
         /// <summary>整张图是否完全透明（空图层，导出时可以整个跳过）。</summary>
         public bool IsFullyTransparent()
         {

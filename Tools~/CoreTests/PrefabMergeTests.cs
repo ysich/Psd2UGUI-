@@ -29,6 +29,7 @@ namespace Psd2Ugui.CoreTests
         [InlineData("text")]
         [InlineData("active")]
         [InlineData("opacity")]
+        [InlineData("drawRect")]
         public void 改一点指纹就变(string field)
         {
             PlanNode node = Node("n1", "Bg", ControlKind.Image, 1, 2, 30, 40);
@@ -57,6 +58,9 @@ namespace Psd2Ugui.CoreTests
                     break;
                 case "opacity":
                     node.Opacity = 0.5d;
+                    break;
+                case "drawRect":
+                    node.DrawRect = new UiRect(1d, 2d, 20d, 30d);
                     break;
             }
 

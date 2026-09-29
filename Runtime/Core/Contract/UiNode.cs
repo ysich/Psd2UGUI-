@@ -66,6 +66,13 @@ namespace Psd2Ugui.Core.Contract
         public UiElementType Type = UiElementType.None;
         public UiRole Role = UiRole.None;
         public UiRect Rect = UiRect.Empty;
+
+        /// <summary>
+        /// 图层里实际有像素的内容框（相对图层矩形，单位像素）。
+        /// 导出贴图时把四周透明边裁掉之后才写；没裁到的节点为 null，装配时不收矩形。
+        /// </summary>
+        public UiRect? ContentRect;
+
         public bool Visible = true;
         public double Opacity = 1d;
         public bool Clipping;

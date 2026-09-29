@@ -65,6 +65,17 @@ namespace Psd2Ugui.Core.Contract
         Font = 2
     }
 
+    /// <summary>角色判定：几处都按同一套名单认「交互态贴图」，规则只能有一份。</summary>
+    public static class UiRoles
+    {
+        /// <summary>按钮的四个交互态（这四类图层会被吸收成按钮的 spriteState）。</summary>
+        public static bool IsState(UiRole role)
+        {
+            return role == UiRole.Highlight || role == UiRole.Pressed || role == UiRole.Selected ||
+                   role == UiRole.Disabled;
+        }
+    }
+
     public enum DiagnosticSeverity
     {
         Info = 0,

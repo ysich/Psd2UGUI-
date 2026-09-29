@@ -87,7 +87,7 @@ C# 侧：`ContractJson.ToJsonText(document)` / `ContractJson.Parse(text)`。
 | `fileName` | `名字_宽x高_内容哈希.png`；内容不变则文件名不变，Unity 不会重新导入 |
 | `path` | 相对 `AssetRoot` 的路径，等于磁盘上的位置 |
 | `border` | 九宫边框（像素），四边全 0 表示不切 |
-| `sourceRect` | 在 PSD 里的原始位置，用来反查是哪个图层 |
+| `sourceRect` | 贴图覆盖图层位图的哪一块（左上角 + 尺寸）。导出裁掉透明边时比整张图层小；补回透明边时就是整张 |
 | `shared` | 是否作为共享资源导出，供其它界面 `ref` 引用 |
 
 ## 5. `root` / 节点
@@ -121,7 +121,7 @@ C# 侧：`ContractJson.ToJsonText(document)` / `ContractJson.Parse(text)`。
 ```
 
 按需出现的字段：`clipping`、`sectionKind`、`resourceId`、`reference` + `referenceKind`、
-`border`、`fill`、`text`、`effects`、`tags`、`children`。
+`contentRect`、`border`、`fill`、`text`、`effects`、`tags`、`children`。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -132,6 +132,7 @@ C# 侧：`ContractJson.ToJsonText(document)` / `ContractJson.Parse(text)`。
 | `type` | 控件类型，见下表 |
 | `role` | 在复合控件里扮演的角色，`none` 表示没有 |
 | `rect` | 画布坐标系（左上角原点，y 向下），单位像素 |
+| `contentRect` | 仅「导出时裁掉了透明边」的图层才有：贴图里真正有像素的那一块，坐标相对 `rect`。装配侧按它收窄节点矩形（位置正好补上被裁掉的左边与上边），图片就不会为了铺满整张 `rect` 被拉变形。有子节点、被状态图/`fill`/`handle`/`viewport` 角色或 `ref` 复用到的图层不裁，也就没有这个字段 |
 | `opacity` | 0–1 |
 | `text` | 仅文本节点。`fontSize` 是像素字号；`align` 取 `left`/`center`/`right`/`justify` |
 | `effects` | 描边 / 阴影 / 发光 / 渐变等 |

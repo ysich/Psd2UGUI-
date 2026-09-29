@@ -358,6 +358,11 @@ namespace Psd2Ugui.Core.Contract
             json.Set("type", JsonValue.String(node.Type.ToContract()));
             json.Set("role", JsonValue.String(node.Role.ToContract()));
             json.Set("rect", RectToJson(node.Rect));
+            if (node.ContentRect != null)
+            {
+                json.Set("contentRect", RectToJson(node.ContentRect.Value));
+            }
+
             json.Set("visible", JsonValue.Bool(node.Visible));
             json.Set("opacity", JsonValue.Number(node.Opacity));
             if (node.Clipping)
@@ -447,6 +452,7 @@ namespace Psd2Ugui.Core.Contract
             node.Type = UiNaming.ParseElementType(json["type"].AsString("none"));
             node.Role = UiNaming.ParseRole(json["role"].AsString("none"));
             node.Rect = RectFromJson(json["rect"]);
+            node.ContentRect = json["contentRect"].IsNull ? (UiRect?)null : RectFromJson(json["contentRect"]);
             node.Visible = json["visible"].AsBool(true);
             node.Opacity = json["opacity"].AsDouble(1d);
             node.Clipping = json["clipping"].AsBool();

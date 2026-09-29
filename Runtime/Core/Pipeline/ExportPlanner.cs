@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Psd2Ugui.Core.Contract;
 using Psd2Ugui.Core.Imaging;
@@ -32,6 +33,7 @@ namespace Psd2Ugui.Core.Pipeline
             var byContent = new Dictionary<string, SpriteExport>();
             var byName = new Dictionary<string, List<SpriteExport>>();
             var references = new List<UiNode>();
+            HashSet<UiNode> frameShared = FindSharedFrameNodes(document);
 
             foreach (UiNode node in document.Nodes())
             {
@@ -83,6 +85,18 @@ namespace Psd2Ugui.Core.Pipeline
                         "图层去空之后没有内容：" + node.Name + " (" + nine.Reason + ")", node);
                     continue;
                 }
+
+                if (frameShared.Contains(node))
+                {
+                    // 这个矩形不只是自己用（子节点定位、按钮状态图、ref 复用…）：
+                    // 贴图得整张铺满它，只留内容框会被拉变形
+                    nine = KeepLayerRect(nine, bitmap);
+                }
+
+                // 贴图比图层矩形小的时候记一笔：装配侧按它把节点矩形收进内容框。
+                // 整张铺满的（本来就没裁、或者为别人补回了边）不记，契约里也不写。
+                UiRect content = nine.SourceRect;
+                node.ContentRect = CoversLayer(content, bitmap) ? (UiRect?)null : content;
 
                 bool hinted = node.Tags.ContainsKey("nine-slice");
                 if (hinted && !nine.IsSliceable)
@@ -323,6 +337,90 @@ namespace Psd2Ugui.Core.Pipeline
                 IsUniform = false,
                 Reason = "未做九宫检测"
             };
+        }
+
+        /// <summary>
+        /// 找出「矩形不只给自己用」的图层：这些贴图必须整张铺满图层矩形，不能只留内容框。
+        ///
+        /// 判据只看结构，不看装配计划：
+        /// - 有子节点的容器：子节点按它的矩形定位；
+        /// - 按钮的四个交互态，以及同一个框里的兄弟图层（含按钮自己的底图）：
+        ///   uGUI 把它们都铺在同一张矩形里，谁被裁了都会跟别人错位；
+        /// - Slider 的填充图：装配侧会把它改成 Filled 整张铺满，压过的图会铺歪；
+        /// - Handle：uGUI 运行时会按滑块位置改 handleRect，贴图得跟着矩形走；
+        /// - Viewport：滚动内容会被挂到它下面，矩形是内容的参照；
+        /// - 被 `ref` 引用的图层：它的图是按别人的矩形铺的。
+        /// </summary>
+        private static HashSet<UiNode> FindSharedFrameNodes(UiDocument document)
+        {
+            var shared = new HashSet<UiNode>();
+            var referenceTargets = new HashSet<string>();
+            foreach (UiNode node in document.Nodes())
+            {
+                if (!string.IsNullOrEmpty(node.ReferenceTarget))
+                {
+                    referenceTargets.Add(node.ReferenceTarget);
+                }
+            }
+
+            foreach (UiNode node in document.Nodes())
+            {
+                if (node.Children.Count > 0 || UiRoles.IsState(node.Role) || node.Role == UiRole.Fill ||
+                    node.Role == UiRole.Handle || node.Role == UiRole.Viewport ||
+                    (!string.IsNullOrEmpty(node.Name) && referenceTargets.Contains(node.Name)))
+                {
+                    shared.Add(node);
+                }
+
+                for (int i = 0; i < node.Children.Count; i++)
+                {
+                    if (!UiRoles.IsState(node.Children[i].Role))
+                    {
+                        continue;
+                    }
+
+                    // 按钮框：常态图与状态图铺在同一个矩形里，整框一起整张导
+                    shared.Add(node);
+                    for (int j = 0; j < node.Children.Count; j++)
+                    {
+                        shared.Add(node.Children[j]);
+                    }
+
+                    break;
+                }
+            }
+
+            return shared;
+        }
+
+        /// <summary>
+        /// 把去空边裁掉的那圈透明边补回来，九宫边框跟着往外挪，贴图重新铺满图层矩形。
+        /// 这样按图层矩形铺回去的时候，画面与 PSD 仍然是 1:1。
+        /// </summary>
+        private static NineSliceResult KeepLayerRect(NineSliceResult nine, Bitmap layer)
+        {
+            UiRect box = nine.SourceRect;
+            int left = (int)Math.Round(box.X);
+            int top = (int)Math.Round(box.Y);
+            int right = layer.Width - (int)Math.Round(box.Right);
+            int bottom = layer.Height - (int)Math.Round(box.Bottom);
+            if (left <= 0 && top <= 0 && right <= 0 && bottom <= 0)
+            {
+                // 本来就没裁掉东西，贴图已经是整张
+                return nine;
+            }
+
+            nine.Sprite = Bitmap.Pad(nine.Sprite, left, top, right, bottom);
+            nine.Border = new UiBorder(nine.Border.Left + left, nine.Border.Bottom + bottom,
+                nine.Border.Right + right, nine.Border.Top + top);
+            nine.SourceRect = new UiRect(0d, 0d, layer.Width, layer.Height);
+            return nine;
+        }
+
+        /// <summary>贴图是不是整张盖住了图层矩形（一条边都没裁掉）。</summary>
+        private static bool CoversLayer(UiRect box, Bitmap layer)
+        {
+            return box.X <= 0d && box.Y <= 0d && box.Right >= layer.Width && box.Bottom >= layer.Height;
         }
     }
 }

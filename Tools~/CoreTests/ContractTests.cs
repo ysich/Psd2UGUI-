@@ -62,7 +62,8 @@ namespace Psd2Ugui.CoreTests
                 Role = UiRole.Background,
                 Rect = new UiRect(0d, 0d, 1920d, 1080d),
                 ResourceId = document.Resources[0].Id,
-                Border = new UiBorder(12, 12, 12, 12)
+                Border = new UiBorder(12, 12, 12, 12),
+                ContentRect = new UiRect(4d, 6d, 1912d, 1068d)
             };
 
             var title = new UiNode
@@ -128,6 +129,8 @@ namespace Psd2Ugui.CoreTests
             UiNode background = parsed.Root.Children[0];
             Assert.Equal(UiRole.Background, background.Role);
             Assert.Equal(source.Root.Children[0].ResourceId, background.ResourceId);
+            // 裁过透明边的贴图要带上内容框，装配侧才知道图实际占哪儿
+            Assert.Equal(new UiRect(4d, 6d, 1912d, 1068d), background.ContentRect.Value);
 
             UiNode title = parsed.Root.Children[1];
             Assert.True(title.Text.HasValue);
@@ -139,6 +142,8 @@ namespace Psd2Ugui.CoreTests
             Assert.Single(title.Effects);
             Assert.Equal("stroke", title.Effects[0].Kind);
             Assert.Equal("text", title.Tags["type"]);
+            // 没裁过的节点不带内容框
+            Assert.Null(title.ContentRect);
 
             Assert.Single(parsed.Diagnostics);
             Assert.Equal(DiagnosticSeverity.Warning, parsed.Diagnostics[0].Severity);
@@ -152,6 +157,15 @@ namespace Psd2Ugui.CoreTests
         {
             UiDocument document = SampleDocument.Create();
             Assert.Equal(ContractJson.ToJsonText(document), ContractJson.ToJsonText(document));
+        }
+
+        [Fact]
+        public void 没裁到内容框的节点不写字段()
+        {
+            JsonValue json = ContractJson.ToJson(SampleDocument.Create());
+
+            Assert.False(json["root"]["children"][0]["contentRect"].IsNull, "裁过的节点该写出内容框");
+            Assert.True(json["root"]["children"][1]["contentRect"].IsNull, "没裁过的节点不该出现这个字段");
         }
 
         [Fact]

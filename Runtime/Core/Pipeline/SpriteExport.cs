@@ -35,7 +35,10 @@ namespace Psd2Ugui.Core.Pipeline
 
         public string SourceLayerPath = string.Empty;
 
-        /// <summary>可拉伸区被裁掉之前的原始尺寸。</summary>
+        /// <summary>
+        /// 贴图覆盖图层位图的哪一块（左上角 + 尺寸）。
+        /// 裁剪导出的图比图层矩形小，装配侧会把节点矩形一起收进这块；补回透明边的图就是整张。
+        /// </summary>
         public UiRect SourceRect = UiRect.Empty;
 
         /// <summary>是否被多个节点共用（含 `ref` 引用）。</summary>

@@ -55,11 +55,13 @@ namespace Psd2Ugui.Editor.Build
             }
 
             // PSD 是左上角原点、Y 向下；uGUI 用左上锚点 + 负的 Y 偏移就能一一对应
+            // 贴图裁过透明边时，图只占中间一块（DrawRect），按它放，别把图拉满整张节点矩形
+            UiRect bounds = plan.DrawRect ?? plan.Rect;
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2((float)plan.Rect.X, (float)-plan.Rect.Y);
-            rect.sizeDelta = new Vector2((float)plan.Rect.Width, (float)plan.Rect.Height);
+            rect.anchoredPosition = new Vector2((float)bounds.X, (float)-bounds.Y);
+            rect.sizeDelta = new Vector2((float)bounds.Width, (float)bounds.Height);
         }
 
         /// <summary>按计划挂视觉组件（Image / RawImage / Text / TMP / 纯色）。</summary>

@@ -117,6 +117,8 @@ namespace Psd2Ugui.Core.Build
                 Effects = node.Effects
             };
 
+            plan.DrawRect = DrawRectFor(node, plan.Rect);
+
             if (node.HasFill)
             {
                 plan.HasColor = true;
@@ -177,7 +179,7 @@ namespace Psd2Ugui.Core.Build
             for (int i = 0; i < node.Children.Count; i++)
             {
                 UiNode child = node.Children[i];
-                if (IsStateRole(child.Role))
+                if (UiRoles.IsState(child.Role))
                 {
                     consumed.Add(child);
                     AbsorbState(context, plan, child);
@@ -592,6 +594,38 @@ namespace Psd2Ugui.Core.Build
             return planned;
         }
 
+        /// <summary>
+        /// 节点自己那张图该占的矩形。
+        ///
+        /// 导出侧把「矩形只属于自己」的图层裁到了实际像素的内容框（贴图因此比图层矩形小一圈），
+        /// 这里把矩形一起收进内容框：左边/上边被裁掉的那几条边换算成偏移，位置与 PSD 一致，
+        /// 图片也不会为了铺满整张矩形被放大。
+        ///
+        /// 导出侧判定过「矩形还要给别人当参照」的图层根本不会带内容框；这里再排一次带子节点的
+        /// 容器：那种矩形是子节点定位的参照，不能收。
+        /// </summary>
+        private static UiRect? DrawRectFor(UiNode node, UiRect rect)
+        {
+            if (node.ContentRect == null || node.Children.Count > 0)
+            {
+                return null;
+            }
+
+            UiRect content = node.ContentRect.Value;
+            if (content.Width <= 0d || content.Height <= 0d)
+            {
+                return null;
+            }
+
+            if (content.Width >= rect.Width && content.Height >= rect.Height)
+            {
+                // 没裁掉任何一条边：图的矩形就是节点矩形，不用动
+                return null;
+            }
+
+            return new UiRect(rect.X + content.X, rect.Y + content.Y, content.Width, content.Height);
+        }
+
         private static void ApplySprite(Context context, UiNode node, PlanNode plan)
         {
             UiResource resource = context.Resource(node.ResourceId);
@@ -694,12 +728,6 @@ namespace Psd2Ugui.Core.Build
                     // 没有类型也没有标签的图层：有贴图就当图片，否则当容器
                     return string.IsNullOrEmpty(node.ResourceId) ? ControlKind.Rect : ControlKind.Image;
             }
-        }
-
-        private static bool IsStateRole(UiRole role)
-        {
-            return role == UiRole.Highlight || role == UiRole.Pressed || role == UiRole.Selected ||
-                   role == UiRole.Disabled;
         }
 
         private static bool IsTextLike(UiNode node)

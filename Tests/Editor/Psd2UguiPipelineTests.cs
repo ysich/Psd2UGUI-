@@ -89,6 +89,37 @@ namespace Psd2Ugui.Tests
         }
 
         [Test]
+        public void 裁过透明边的图层按内容框摆()
+        {
+            // 24x24 的图层矩形放在 (8,8)，只有中间 8x8 见方有像素
+            WritePaddedFixture("Icon.img", 8, 8, 24, 8);
+
+            Psd2UguiRunResult result = Run();
+
+            Assert.IsTrue(result.Success, "不该有错误级诊断：" + Describe(result));
+            Assert.AreEqual(1, result.ExportPlan.Sprites.Count, "只该出一张图");
+            SpriteExport sprite = result.ExportPlan.Sprites[0];
+            Assert.AreEqual(8, sprite.Bitmap.Width, "导出该把透明边裁掉");
+            Assert.AreEqual(new UiRect(8d, 8d, 8d, 8d), sprite.SourceRect);
+
+            GameObject contents = PrefabUtility.LoadPrefabContents(result.PrefabPath);
+            try
+            {
+                Transform icon = contents.transform.Find("m_img_Icon");
+                Assert.IsNotNull(icon, "找不到 Icon 节点");
+                var rect = (RectTransform)icon;
+                // 位置补上被裁掉的左边与上边，尺寸就是内容框的 8x8，不再被拉满整张图层矩形
+                Assert.AreEqual(new Vector2(16f, -16f), rect.anchoredPosition);
+                Assert.AreEqual(new Vector2(8f, 8f), rect.sizeDelta);
+                Assert.AreEqual(1, icon.GetComponents<Image>().Length);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+            }
+        }
+
+        [Test]
         public void 重新导出保留人工改动()
         {
             WriteFixture("Bg.img");
@@ -316,6 +347,34 @@ namespace Psd2Ugui.Tests
                 .WithChannel(1, PsdCompression.Raw, channel)
                 .WithChannel(2, PsdCompression.Raw, channel)
                 .WithChannel(PsdChannelId.Transparency, PsdCompression.Raw, alpha);
+        }
+
+        /// <summary>图层矩形 size×size 放在 (x,y)，只有中间 (size-2*pad) 见方有像素。</summary>
+        private void WritePaddedFixture(string layerName, int x, int y, int size, int pad)
+        {
+            var builder = new PsdFixtureBuilder { Width = 64, Height = 64 };
+            LayerSpec layer = builder.AddLayer(layerName);
+            layer.Left = x;
+            layer.Top = y;
+            layer.Right = x + size;
+            layer.Bottom = y + size;
+            int count = size * size;
+            var channel = new byte[count];
+            var alpha = new byte[count];
+            for (int i = 0; i < count; i++)
+            {
+                int px = i % size;
+                int py = i / size;
+                bool inner = px >= pad && px < size - pad && py >= pad && py < size - pad;
+                channel[i] = 200;
+                alpha[i] = (byte)(inner ? 255 : 0);
+            }
+
+            layer.WithChannel(0, PsdCompression.Raw, channel)
+                .WithChannel(1, PsdCompression.Raw, channel)
+                .WithChannel(2, PsdCompression.Raw, channel)
+                .WithChannel(PsdChannelId.Transparency, PsdCompression.Raw, alpha);
+            File.WriteAllBytes(_psdPath, builder.Build());
         }
 
         /// <summary>

@@ -118,6 +118,39 @@ namespace Psd2Ugui.CoreTests
         }
 
         [Fact]
+        public void 贴图裁过透明边时图片按内容框摆()
+        {
+            UiNode image = Node("Icon", UiElementType.Image, 10, 20, 30, 40);
+            image.ContentRect = new UiRect(2d, 3d, 6d, 8d);
+
+            PlanNode plan = PrefabPlanner.Build(Doc(image)).Children[0];
+
+            // 节点矩形不动：子节点按它定位、状态图也铺在它上面
+            Assert.Equal(new UiRect(10d, 20d, 30d, 40d), plan.Rect);
+            // 图自己收进内容框，左上角偏出的是被裁掉的那几条边
+            Assert.True(plan.DrawRect.HasValue);
+            Assert.Equal(new UiRect(12d, 23d, 6d, 8d), plan.DrawRect.Value);
+        }
+
+        [Fact]
+        public void 内容框盖满矩形或有子节点时不动矩形()
+        {
+            UiNode covered = Node("Icon", UiElementType.Image, 10, 20, 30, 40);
+            covered.ContentRect = new UiRect(0d, 0d, 30d, 40d);
+
+            UiNode container = Node("Panel", UiElementType.Panel, 0, 0, 30, 40);
+            container.ContentRect = new UiRect(2d, 3d, 6d, 8d);
+            container.AddChild(Node("Inside", UiElementType.Image, 4, 4, 8, 8));
+
+            PlanNode plan = PrefabPlanner.Build(Doc(covered, container));
+
+            // 一条边都没裁（内容框与矩形一样大）时不必收
+            Assert.Null(plan.Children[0].DrawRect);
+            // 有子节点的容器：矩形是子节点定位的参照，不能收
+            Assert.Null(plan.Children[1].DrawRect);
+        }
+
+        [Fact]
         public void 按钮把四态贴图吸收进状态机()
         {
             UiNode button = Node("BlueBt", UiElementType.Button, 0, 0, 100, 40);

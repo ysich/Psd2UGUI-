@@ -23,6 +23,16 @@ namespace Psd2Ugui.Core.Build
             var builder = new StringBuilder(160);
             builder.Append(node.Kind).Append('|');
             AppendRect(builder, node.Rect);
+            if (node.DrawRect == null)
+            {
+                // 没裁过内容框的节点保持原来的指纹，重新导出时不会被无谓地刷一遍
+                builder.Append('-');
+            }
+            else
+            {
+                AppendRect(builder, node.DrawRect.Value);
+            }
+
             builder.Append(node.Anchor == null ? "-" : AnchorKey(node.Anchor)).Append('|');
             builder.Append(node.Active ? '1' : '0').Append('|');
             builder.Append(Number(node.Opacity)).Append('|');

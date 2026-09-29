@@ -151,6 +151,13 @@ namespace Psd2Ugui.Core.Build
         /// <summary>相对父节点左上角的矩形（PSD 像素，Y 向下）。</summary>
         public UiRect Rect = UiRect.Empty;
 
+        /// <summary>
+        /// 节点自己那张图实际占的矩形。贴图被裁掉透明边之后它比 <see cref="Rect"/> 小一圈、
+        /// 还会往左上偏（偏的就是被裁掉的那几条边）；为 null 表示和 <see cref="Rect"/> 一样。
+        /// 锚点布局（<see cref="Anchor"/>）与根节点不走这里。
+        /// </summary>
+        public UiRect? DrawRect;
+
         /// <summary>非空时忽略 <see cref="Rect"/>，改用锚点布局。</summary>
         public PlanAnchor Anchor;
 
