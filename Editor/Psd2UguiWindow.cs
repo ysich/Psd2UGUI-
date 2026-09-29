@@ -25,7 +25,6 @@ namespace Psd2Ugui.Editor
         private int _pixelsPerUnit = 100;
         private bool _detectNineSlice = true;
         private bool _includeHidden = true;
-        private bool _rootCanvas = true;
         private bool _markNodes = true;
         private bool _applyEffects = true;
         private bool _exportSprites = true;
@@ -173,7 +172,6 @@ namespace Psd2Ugui.Editor
                 _reuseShared = EditorGUILayout.Toggle("跨界面复用共享贴图", _reuseShared);
 
                 EditorGUILayout.LabelField("装配", EditorStyles.boldLabel);
-                _rootCanvas = EditorGUILayout.Toggle("根节点带 Canvas", _rootCanvas);
                 _markNodes = EditorGUILayout.Toggle("标出节点来源图层", _markNodes);
                 _applyEffects = EditorGUILayout.Toggle("文本效果（描边/投影）", _applyEffects);
                 _incremental = EditorGUILayout.Toggle("已有预制体时增量更新", _incremental);
@@ -472,7 +470,6 @@ namespace Psd2Ugui.Editor
 
             options.Build.Module = options.Export.Module;
             options.Build.PixelsPerUnit = _pixelsPerUnit;
-            options.Build.RootCanvas = _rootCanvas;
             options.Build.MarkNodes = _markNodes;
             options.Build.ApplyEffects = _applyEffects;
 

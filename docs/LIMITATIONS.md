@@ -52,7 +52,7 @@
 | 九宫检测 | 只在这张图**确实存在可利用的边框区域**时才给边框；检测不出就按整图导（不会瞎切） |
 | 贴图裁掉透明边 | 图层四周的空边会被裁掉（省体积），节点矩形随之收进内容框并补上被裁掉的偏移，画面与 PSD 对齐；代价是这些节点的 `RectTransform` 尺寸不再等于图层矩形。矩形还要给别人当参照的图层（有子节点的容器、按钮状态图、`fill` / `handle` / `viewport`、被 `ref` 复用的图）整张导出，不受影响 |
 | 复杂控件的子结构 | Slider / ScrollView / Dropdown / Toggle 等会按 uGUI 的标准结构补齐缺的零件（并报 `prefab.*` 诊断），补齐的零件是「能跑」的样子，不是「和设计稿一模一样」 |
-| 根节点 | 默认挂 Canvas + CanvasScaler + GraphicRaycaster，方便直接拖进场景看。参考分辨率默认取 PSD 画布尺寸 |
+| 根节点 | Prefab 不包含 Canvas、CanvasScaler、GraphicRaycaster；使用时放到场景已有的 Canvas 下 |
 
 ## 4. 工程与流程
 

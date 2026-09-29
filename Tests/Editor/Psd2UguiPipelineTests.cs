@@ -76,6 +76,9 @@ namespace Psd2Ugui.Tests
 
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(result.PrefabPath);
             Assert.IsNotNull(prefab);
+            Assert.IsNull(prefab.GetComponent<Canvas>(), "Prefab 根节点不应包含 Canvas");
+            Assert.IsNull(prefab.GetComponent<CanvasScaler>(), "Prefab 根节点不应包含 CanvasScaler");
+            Assert.IsNull(prefab.GetComponent<GraphicRaycaster>(), "Prefab 根节点不应包含 GraphicRaycaster");
 
             Transform bg = prefab.transform.Find("m_img_Bg");
             Assert.IsNotNull(bg, "找不到 Bg 节点");
@@ -176,6 +179,30 @@ namespace Psd2Ugui.Tests
             Transform button = contents.transform.Find("m_btn_Button");
             Assert.AreEqual(1, button.GetComponents<Button>().Length, "Button 挂了两遍");
             PrefabUtility.UnloadPrefabContents(contents);
+        }
+
+        [Test]
+        public void 增量导出会清理旧版根Canvas组件()
+        {
+            WriteFixture("Bg.img");
+            Psd2UguiRunResult first = Run();
+
+            GameObject contents = PrefabUtility.LoadPrefabContents(first.PrefabPath);
+            contents.AddComponent<Canvas>();
+            contents.AddComponent<CanvasScaler>();
+            contents.AddComponent<GraphicRaycaster>();
+            PrefabUtility.SaveAsPrefabAsset(contents, first.PrefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+
+            Psd2UguiRunResult second = Run();
+
+            OnPrefab(second.PrefabPath, root =>
+            {
+                Assert.IsNull(root.GetComponent<Canvas>(), "旧版 Canvas 没有被清理");
+                Assert.IsNull(root.GetComponent<CanvasScaler>(), "旧版 CanvasScaler 没有被清理");
+                Assert.IsNull(root.GetComponent<GraphicRaycaster>(), "旧版 GraphicRaycaster 没有被清理");
+                return true;
+            });
         }
 
         [Test]

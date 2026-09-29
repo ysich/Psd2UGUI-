@@ -83,6 +83,7 @@ namespace Psd2Ugui.Editor.Build
 
             try
             {
+                PrefabBuilder.RemoveRootCanvasComponents(root);
                 PrefabSnapshot.Result snapshot = PrefabSnapshot.Collect(root, plan, context);
                 List<MergeOp> operations = PrefabMerge.Diff(snapshot.Nodes, plan);
                 var index = new Dictionary<string, GameObject>();

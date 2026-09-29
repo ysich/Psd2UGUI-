@@ -264,7 +264,7 @@ namespace Psd2Ugui.Editor.Build
         private static readonly System.Type[] GeneratedComponents =
         {
             typeof(Transform), typeof(RectTransform), typeof(CanvasRenderer), typeof(Psd2UguiNode),
-            typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(CanvasGroup),
+            typeof(CanvasGroup),
             typeof(RectMask2D), typeof(Mask), typeof(Shadow), typeof(Outline), typeof(LayoutElement),
             typeof(Image), typeof(RawImage), typeof(Text), typeof(Button), typeof(Toggle), typeof(Slider),
             typeof(Scrollbar), typeof(ScrollRect), typeof(Dropdown), typeof(InputField)

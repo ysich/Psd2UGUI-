@@ -113,7 +113,7 @@ namespace Psd2Ugui.Editor.Build
             var rect = (RectTransform)go.transform;
             if (isRoot)
             {
-                ApplyRootLayout(rect, plan, context);
+                ApplyRootLayout(rect, plan);
             }
             else
             {
@@ -173,7 +173,7 @@ namespace Psd2Ugui.Editor.Build
             {
                 if (isRoot)
                 {
-                    ApplyRootLayout(rect, plan, context);
+                    ApplyRootLayout(rect, plan);
                 }
                 else
                 {
@@ -201,42 +201,33 @@ namespace Psd2Ugui.Editor.Build
             context.NodesReused++;
         }
 
-        private static void ApplyRootLayout(RectTransform rect, PlanNode plan, PrefabBuildContext context)
+        private static void ApplyRootLayout(RectTransform rect, PlanNode plan)
         {
             ControlFactory.ApplyLayout(rect, plan);
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0.5f, 0.5f);
+        }
 
-            if (!context.Build.RootCanvas)
+        /// <summary>清理旧版本曾经写到根节点上的场景级 Canvas 组件。</summary>
+        public static void RemoveRootCanvasComponents(GameObject root)
+        {
+            if (root == null)
             {
                 return;
             }
 
-            var canvas = rect.gameObject.GetComponent<Canvas>();
-            if (canvas == null)
+            RemoveComponent<GraphicRaycaster>(root);
+            RemoveComponent<CanvasScaler>(root);
+            RemoveComponent<Canvas>(root);
+        }
+
+        private static void RemoveComponent<T>(GameObject target) where T : Component
+        {
+            T component = target.GetComponent<T>();
+            if (component != null)
             {
-                canvas = rect.gameObject.AddComponent<Canvas>();
-            }
-
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
-            var scaler = rect.gameObject.GetComponent<CanvasScaler>();
-            if (scaler == null)
-            {
-                scaler = rect.gameObject.AddComponent<CanvasScaler>();
-            }
-
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(
-                context.Build.ReferenceWidth > 0 ? context.Build.ReferenceWidth : (float)plan.Rect.Width,
-                context.Build.ReferenceHeight > 0 ? context.Build.ReferenceHeight : (float)plan.Rect.Height);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-
-            if (rect.gameObject.GetComponent<GraphicRaycaster>() == null)
-            {
-                rect.gameObject.AddComponent<GraphicRaycaster>();
+                UnityEngine.Object.DestroyImmediate(component, true);
             }
         }
 

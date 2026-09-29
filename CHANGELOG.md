@@ -56,7 +56,7 @@
 - 文本效果映射：描边与外发光 → Outline，投影 → Shadow，TMP 渐变 → 顶点渐变
 - **增量更新**：按稳定节点 ID 认领已有对象，只覆盖工具管的属性，
   人工改动一律保留；设计稿删掉的图层才会被移除
-- 根节点可选带 Canvas + CanvasScaler + GraphicRaycaster
+- 根节点不带 Canvas、CanvasScaler、GraphicRaycaster，可直接挂到场景已有 Canvas 下
 
 **编辑器体验**
 

@@ -88,7 +88,6 @@ Assets/PSD2UGUI/
 | 语义 | 保留隐藏图层 | 开 | 隐藏图层仍然进节点树，只是 `SetActive(false)`，方便后面在编辑器里打开 |
 | 导出 | 自动九宫检测 | 开 | 自动找可拉伸的边框；也可以用 `sliced` 标签强制 |
 | 导出 | 跨界面复用共享贴图 | 开 | 本文件里没有的 `ref` 去其它界面已导出的图里找 |
-| 装配 | 根节点带 Canvas | 开 | 根节点挂 Canvas + CanvasScaler + GraphicRaycaster，拖进场景就能看 |
 | 装配 | 标出节点来源图层 | 开 | 每个节点挂 `Psd2UguiNode`，记录来自哪个图层。**关掉会让增量更新失效** |
 | 装配 | 文本效果（描边/投影） | 开 | 用 TMP 的能力近似 PSD 的描边、投影、发光 |
 | 装配 | 已有预制体时增量更新 | 开 | 关掉则每次整棵重建，人工改动会被冲掉 |
@@ -174,7 +173,6 @@ var options = new Psd2UguiRunOptions { PsdPath = "Assets/UI/Login.psd" };
 options.Export.Module = "login";
 options.Export.AssetRoot = "Assets/Art/UI";
 options.Semantics.TextType = Psd2Ugui.Core.Contract.UiElementType.Text;  // 全部用 UGUI Text
-options.Build.RootCanvas = false;
 options.WriteReport = true;
 
 Psd2UguiRunResult run = Psd2UguiPipeline.Run(options);

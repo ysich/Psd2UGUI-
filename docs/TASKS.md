@@ -263,7 +263,7 @@ Assets/PSD2UGUI/
 - [x] 文本样式：字号/颜色/对齐/字体路由（按 PSD 字体名找工程字体，找不到给诊断）
 - [x] 文本效果：描边/外发光 → `Outline`，投影 → `Shadow`，渐变 → TMP 顶点渐变（uGUI Text 给诊断）
 - [x] `Psd2UguiNode` 标记组件（稳定 ID、图层路径、图层 ID、角色、来源 PSD）
-- [x] 根节点可选 Canvas + CanvasScaler（参考分辨率取 PSD 画布）+ GraphicRaycaster
+- [x] 根节点只保留 UI 层级，不导出场景级 Canvas、CanvasScaler、GraphicRaycaster
 - [x] `PsdDump --prefab-plan out.json`：命令行核对映射结果，不开 Unity 也能看
 - **验收**：EditMode 测试断言层级、组件、关键属性与九宫 Border 正确
 - **验收结果**：`dotnet test` 291 项全绿（装配计划 20 项：类型映射、相对坐标、四态吸收、

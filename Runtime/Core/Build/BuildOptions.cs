@@ -8,13 +8,6 @@ namespace Psd2Ugui.Core.Build
 
         public int PixelsPerUnit = 100;
 
-        /// <summary>根节点带 Canvas + CanvasScaler + GraphicRaycaster（方便直接拖进场景看效果）。</summary>
-        public bool RootCanvas = true;
-
-        /// <summary>参考分辨率留空时用 PSD 画布尺寸。</summary>
-        public int ReferenceWidth;
-        public int ReferenceHeight;
-
         /// <summary>标出每个节点来自哪个图层（挂 <c>Psd2UguiNode</c>）。</summary>
         public bool MarkNodes = true;
 
